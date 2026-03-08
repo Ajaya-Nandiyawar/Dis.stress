@@ -7,17 +7,27 @@ import { getHeatmapData } from '../api/sos';
 import { useMapData } from '../hooks/useMapData';
 import { useWebSocket } from '../hooks/useWebSocket';
 
-const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, routingData }) => {
+const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, routingData, cascadeVisible }) => {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
-    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute } = useMapData(mapRef);
+    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility } = useMapData(mapRef);
 
-    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange });
+    const handleBroadcastAlertWithCascade = (data) => {
+        if (onBroadcastAlert) onBroadcastAlert(data);
+        drawCascadeRipples(data);
+    };
+
+    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange });
 
     // Draw route whenever routingData changes
     useEffect(() => {
         drawRoute(routingData);
     }, [routingData, drawRoute]);
+
+    // Track visibility of cascade layer
+    useEffect(() => {
+        toggleCascadeVisibility(cascadeVisible);
+    }, [cascadeVisible, toggleCascadeVisibility]);
 
     useEffect(() => {
         if (mapRef.current) return;

@@ -18,6 +18,7 @@ function App() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [routingData, setRoutingData] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
+  const [cascadeVisible, setCascadeVisible] = useState(false);
 
   // Fetch initial stats and alerts on mount
   useEffect(() => {
@@ -95,6 +96,8 @@ function App() {
           handleOptimiseRoute={handleOptimiseRoute}
           routingData={routingData}
           recentAlerts={recentAlerts}
+          cascadeVisible={cascadeVisible}
+          setCascadeVisible={setCascadeVisible}
         />
       </AppShell.Navbar>
 
@@ -105,6 +108,7 @@ function App() {
           onNewSos={handleNewSos}
           onConnectionChange={setWsConnected}
           routingData={routingData}
+          cascadeVisible={cascadeVisible}
         />
       </AppShell.Main>
     </AppShell>

@@ -115,6 +115,28 @@ export const useMapData = (mapRef) => {
                 'text-color': '#FFFFFF'
             }
         });
+
+        // ── Sonic Cascade Ripple source ───────────────────────
+        mapRef.current.addSource('cascade-data', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+        });
+
+        mapRef.current.addLayer({
+            id: 'cascade-ripples',
+            type: 'circle',
+            source: 'cascade-data',
+            layout: {
+                'visibility': 'none' // Hidden by default until toggle is clicked
+            },
+            paint: {
+                'circle-color': '#1565C0', // Blue ripple
+                'circle-radius': ['match', ['get', 'ring'], 1, 40, 2, 80, 3, 120, 0],
+                'circle-opacity': ['match', ['get', 'ring'], 1, 0.5, 2, 0.3, 3, 0.15, 0],
+                'circle-stroke-width': 1,
+                'circle-stroke-color': '#0D47A1'
+            }
+        });
     };
 
     const loadInitialData = (records) => {
@@ -190,5 +212,31 @@ export const useMapData = (mapRef) => {
         mapRef.current.getSource('route-data').setData({ type: 'FeatureCollection', features });
     };
 
-    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute };
+    const drawCascadeRipples = (alertData) => {
+        if (!mapRef.current || !mapRef.current.getSource('cascade-data')) return;
+
+        const lat = Number(alertData?.lat ?? alertData?.latitude);
+        const lng = Number(alertData?.lng ?? alertData?.longitude);
+
+        if (!alertData || isNaN(lat) || isNaN(lng)) {
+            mapRef.current.getSource('cascade-data').setData({ type: 'FeatureCollection', features: [] });
+            return;
+        }
+
+        // Create 3 Point features at the exact same [lng, lat], but with different 'ring' properties
+        const features = [1, 2, 3].map(ringNum => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [lng, lat] },
+            properties: { ring: ringNum }
+        }));
+
+        mapRef.current.getSource('cascade-data').setData({ type: 'FeatureCollection', features });
+    };
+
+    const toggleCascadeVisibility = (isVisible) => {
+        if (!mapRef.current || !mapRef.current.getLayer('cascade-ripples')) return;
+        mapRef.current.setLayoutProperty('cascade-ripples', 'visibility', isVisible ? 'visible' : 'none');
+    };
+
+    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility };
 };

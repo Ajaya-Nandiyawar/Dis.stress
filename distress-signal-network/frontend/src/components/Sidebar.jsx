@@ -1,16 +1,16 @@
 import React from 'react';
-import { Stack, Text, Badge, Group, Divider, Button, ScrollArea, Box } from '@mantine/core';
+import { Stack, Text, Badge, Group, Divider, Button, ScrollArea, Box, Switch } from '@mantine/core';
 import { Navigation } from 'lucide-react';
 import SeverityCounter from './SeverityCounter';
 import RoutingPanel from './RoutingPanel';
 import AlertHistory from './AlertHistory';
 
-export default function Sidebar({ connected, stats, routeLoading, handleOptimiseRoute, routingData, recentAlerts }) {
+export default function Sidebar({ connected, stats, routeLoading, handleOptimiseRoute, routingData, recentAlerts, cascadeVisible, setCascadeVisible }) {
     const sev = stats?.by_severity || { critical: 0, urgent: 0, standard: 0, untriaged: 0 };
     const total = sev.critical + sev.urgent + sev.standard + sev.untriaged;
 
     return (
-        <Stack gap="md" h="100%">
+        <Stack gap="md" h="100%" style={{ overflowY: 'auto' }}>
             {/* ── PANEL 1: Connection Status ───────────────── */}
             <Group justify="space-between" align="center">
                 <Badge
@@ -40,7 +40,16 @@ export default function Sidebar({ connected, stats, routeLoading, handleOptimise
             <Divider color="dark.4" />
 
             {/* ── PANEL 3: Route Optimisation ──────────────── */}
-            <Text size="xs" c="dimmed" fw={600} tt="uppercase">Route Optimisation</Text>
+            <Group justify="space-between" align="center">
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Route Optimisation</Text>
+                <Switch
+                    label="Show Cascade Propagation"
+                    checked={cascadeVisible}
+                    onChange={(e) => setCascadeVisible(e.currentTarget.checked)}
+                    color="blue"
+                    size="xs"
+                />
+            </Group>
             <Button
                 color="blue"
                 loading={routeLoading}
@@ -50,14 +59,16 @@ export default function Sidebar({ connected, stats, routeLoading, handleOptimise
             >
                 Optimise Route
             </Button>
-            <ScrollArea h={200} type="auto" offsetScrollbars>
-                <RoutingPanel data={routingData} />
-            </ScrollArea>
+            <Box style={{ minHeight: 120 }}>
+                <ScrollArea h={160} type="auto" offsetScrollbars>
+                    <RoutingPanel data={routingData} />
+                </ScrollArea>
+            </Box>
 
             <Divider color="dark.4" />
 
             {/* ── PANEL 4: Alert History ───────────────────── */}
-            <Box mt="auto">
+            <Box style={{ flexGrow: 1, minHeight: 140 }}>
                 <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb="xs">Alert History</Text>
                 <ScrollArea h={180} type="auto" offsetScrollbars>
                     <AlertHistory alerts={recentAlerts} />
