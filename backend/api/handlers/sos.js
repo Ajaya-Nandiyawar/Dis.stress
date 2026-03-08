@@ -116,6 +116,60 @@ router.post('/', async (req, res) => {
     }
 });
 
+// GET /api/sos/heatmap — Fetch SOS reports for dashboard map overlay
+// IMPORTANT: This route MUST be defined BEFORE /:id routes
+router.get('/heatmap', async (req, res) => {
+    // ── Parse query params ──────────────────────────────────────
+    let limit = parseInt(req.query.limit, 10) || 500;
+    if (limit > 1000) limit = 1000;
+    if (limit < 1) limit = 1;
+
+    const severityFilter = req.query.severity ? parseInt(req.query.severity, 10) : null;
+    const resolved = req.query.resolved === 'true';
+
+    // ── Build dynamic query ─────────────────────────────────────
+    const conditions = ['resolved = $1'];
+    const values = [resolved];
+    let paramIndex = 2;
+
+    if (severityFilter && [1, 2, 3].includes(severityFilter)) {
+        conditions.push(`severity = $${paramIndex}`);
+        values.push(severityFilter);
+        paramIndex++;
+    }
+
+    values.push(limit);
+
+    const sql = `
+        SELECT id, lat, lng, message, source, node_id, severity, label, colour,
+               resolved, metadata, created_at, triaged_at
+        FROM sos_reports
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY created_at DESC
+        LIMIT $${paramIndex}
+    `;
+
+    // ── Execute query ───────────────────────────────────────────
+    try {
+        const result = await pool.query(sql, values);
+
+        // For untriaged records (severity is null), set colour to grey
+        const records = result.rows.map((row) => ({
+            ...row,
+            colour: row.colour || '#888888',
+        }));
+
+        return res.status(200).json(records);
+    } catch (dbErr) {
+        console.error('Heatmap query failed:', dbErr.message);
+        return res.status(500).json({
+            error: true,
+            code: 'DB_ERROR',
+            message: 'Failed to fetch heatmap data',
+        });
+    }
+});
+
 // PATCH /api/sos/:id/triage — AI triage callback (Shrinidhi's service only)
 router.patch('/:id/triage', async (req, res) => {
     const id = parseInt(req.params.id, 10);
@@ -210,12 +264,6 @@ router.patch('/:id/triage', async (req, res) => {
             message: 'Failed to update triage. Please retry.',
         });
     }
-});
-
-// GET /api/sos — Get all active SOS signals (placeholder for heatmap endpoint)
-router.get('/', (req, res) => {
-    // TODO: Implement SOS retrieval logic (Prompt for heatmap)
-    res.status(501).json({ message: 'SOS retrieval endpoint not yet implemented' });
 });
 
 module.exports = router;
