@@ -1,0 +1,156 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import '../services/api_service.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _connected = false;
+  String _locationText = 'Fetching location...';
+  double? _lat;
+  double? _lng;
+  bool _sosSubmitting = false;
+  String _lastStatus = 'Idle';
+  Timer? _healthTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocation();
+    _checkConnection();
+    _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkConnection());
+  }
+
+  @override
+  void dispose() {
+    _healthTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkConnection() async {
+    try {
+      final health = await ApiService.checkHealth();
+      setState(() => _connected = health['status'] == 'ok');
+    } catch (e) {
+      setState(() => _connected = false);
+    }
+  }
+
+  Future<void> _fetchLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _locationText = 'Location services disabled');
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() => _locationText = 'Location permission denied');
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() => _locationText = 'Location permissions permanently denied');
+      return;
+    }
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        _lat = position.latitude;
+        _lng = position.longitude;
+        _locationText = '${_lat!.toStringAsFixed(4)}, ${_lng!.toStringAsFixed(4)}';
+      });
+    } catch (e) {
+      setState(() => _locationText = 'Location unavailable');
+    }
+  }
+
+  void _onDevButtonPress() {
+    print('Dev button triggered');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            GestureDetector(
+              onLongPress: _onDevButtonPress,
+              child: const Text('DIST.RESS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 24)),
+            ),
+            Row(
+              children: [
+                Container(
+                  width: 12, height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _connected ? Colors.green : Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(_connected ? 'Live' : 'Offline', style: const TextStyle(fontSize: 14)),
+              ],
+            )
+          ],
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Text(_locationText, style: const TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.info, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text('Status: $_lastStatus', style: const TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _sosSubmitting ? null : () {}, // SOS submit logic stubbed for next prompt
+              child: _sosSubmitting
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('SOS', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
