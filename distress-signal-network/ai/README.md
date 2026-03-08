@@ -202,6 +202,4 @@ python -X utf8 test_wiring.py       # Checkpoint 6 — Wiring + error handling
 | Member | Role | Service |
 |--------|------|---------|
 | **Shrinidhi** | AI Lead | This Python FastAPI service |
-| **Aryan** | Backend Lead | Node.js API + Redis + PostgreSQL |
-| **Ajinkya** | Frontend | React Dashboard + Mapbox |
-| **Ajaya** | Mobile | Flutter App + IoT Simulator |
+
