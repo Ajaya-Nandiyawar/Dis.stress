@@ -198,8 +198,3 @@ python -X utf8 test_wiring.py       # Checkpoint 6 — Wiring + error handling
 ---
 
 ## 👥 Team Mario — BlueBit 4.0
-
-| Member | Role | Service |
-|--------|------|---------|
-| **Shrinidhi** | AI Lead | This Python FastAPI service |
-
