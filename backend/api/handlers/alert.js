@@ -14,6 +14,7 @@ const VALID_TYPES = ['earthquake', 'flood', 'blast', 'fire', 'stampede'];
 
 router.post('/trigger', async (req, res) => {
     const { type, confidence, lat, lng, source } = req.body;
+    const metadata = req.body.metadata || {};
 
     // ── Validation ──────────────────────────────────────────────
     const missingOrInvalid = [];
@@ -48,10 +49,10 @@ router.post('/trigger', async (req, res) => {
     try {
         // STEP 1 — Save to database
         const dbResult = await pool.query(
-            `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired)
-             VALUES ($1, $2, $3, $4, $5, true)
-             RETURNING id, threat_type, confidence, triggered_at`,
-            [type, confidence, lat, lng, source]
+            `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata)
+             VALUES ($1, $2, $3, $4, $5, true, $6)
+             RETURNING id, threat_type, confidence, metadata, triggered_at`,
+            [type, confidence, lat, lng, source, metadata]
         );
         const alertRecord = dbResult.rows[0];
         const alert_id = alertRecord.id;
@@ -93,7 +94,7 @@ router.post('/trigger', async (req, res) => {
 
         // STEP 3 — Publish to Redis 'alert-broadcast' channel
         try {
-            await publish('alert-broadcast', { alert_id, type, confidence, lat, lng, triggered_at });
+            await publish('alert-broadcast', { alert_id, type, confidence, lat, lng, triggered_at, metadata });
         } catch (redisErr) {
             console.error('Redis alert-broadcast publish failed (non-fatal):', redisErr.message);
         }
@@ -101,7 +102,7 @@ router.post('/trigger', async (req, res) => {
         // STEP 4 — Emit WebSocket 'broadcast-alert' event
         try {
             const { getIO } = require('../../ws/socket');
-            getIO().emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at });
+            getIO().emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at, metadata });
         } catch (wsErr) {
             console.error('WebSocket emit failed (non-fatal):', wsErr.message);
         }
