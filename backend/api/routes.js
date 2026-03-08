@@ -13,6 +13,7 @@ router.use('/sos', sosHandler);
 
 // Alert endpoints
 router.use('/alert', alertHandler);
+router.use('/alerts', alertHandler);
 
 // Routing proxy endpoints
 router.use('/routing', routingHandler);

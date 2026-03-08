@@ -126,4 +126,31 @@ router.post('/trigger', async (req, res) => {
     }
 });
 
+// ── GET /api/alert/recent ───────────────────────────────────────
+// Returns the last N verified broadcast alerts for the dashboard history panel.
+router.get('/recent', async (req, res) => {
+    try {
+        let limit = parseInt(req.query.limit, 10) || 10;
+        if (limit < 1) limit = 10;
+        if (limit > 50) limit = 50;
+
+        const result = await pool.query(
+            `SELECT id, threat_type, confidence, lat, lng, source, broadcast_fired, triggered_at
+             FROM alerts
+             ORDER BY triggered_at DESC
+             LIMIT $1`,
+            [limit]
+        );
+
+        return res.status(200).json(result.rows);
+    } catch (dbErr) {
+        console.error('Recent alerts query failed:', dbErr.message);
+        return res.status(500).json({
+            error: true,
+            code: 'DB_ERROR',
+            message: 'Failed to fetch recent alerts.'
+        });
+    }
+});
+
 module.exports = router;
