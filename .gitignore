@@ -36,9 +36,9 @@ Desktop.ini
 ehthumbs.db
 
 # Backend specific
-backend/node_modules/
-backend/.env
-backend/package-lock.json
+distress-signal-network/backend/node_modules/
+distress-signal-network/backend/.env
+distress-signal-network/backend/package-lock.json
 
 # Frontend specific
 distress-signal-network/frontend/node_modules/

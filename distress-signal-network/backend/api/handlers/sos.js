@@ -86,10 +86,19 @@ router.post('/', async (req, res) => {
             console.error('Redis publish failed (non-fatal):', redisErr.message);
         }
 
-        // ── WebSocket Emit ──────────────────────────────────────
+        // ── Emit WebSocket Event ────────────────────────────────────
         try {
-            const { io } = require('../../server');
-            io.emit('new-sos', { ...saved, colour: '#888888' });
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('new-sos', {
+                id: saved.id,
+                lat: saved.lat,
+                lng: saved.lng,
+                message: saved.message,
+                source: saved.source,
+                severity: null,
+                colour: '#888888',
+                created_at: saved.created_at,
+            });
         } catch (wsErr) {
             console.error('WebSocket emit failed (non-fatal):', wsErr.message);
         }
@@ -170,6 +179,56 @@ router.get('/heatmap', async (req, res) => {
     }
 });
 
+// GET /api/sos/stats — Live severity and source counts for dashboard sidebar
+// IMPORTANT: This route MUST be defined BEFORE /:id routes
+router.get('/stats', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE severity = 1) AS critical,
+                COUNT(*) FILTER (WHERE severity = 2) AS urgent,
+                COUNT(*) FILTER (WHERE severity = 3) AS standard,
+                COUNT(*) FILTER (WHERE severity IS NULL) AS untriaged,
+                COUNT(*) FILTER (WHERE resolved = true) AS resolved,
+                COUNT(*) FILTER (WHERE source = 'manual') AS manual,
+                COUNT(*) FILTER (WHERE source = 'zero-touch') AS zero_touch,
+                COUNT(*) FILTER (WHERE source = 'iot_node') AS iot_node,
+                COUNT(*) FILTER (WHERE source = 'sonic_cascade') AS sonic_cascade
+             FROM sos_reports
+             WHERE resolved = false`
+        );
+
+        const row = result.rows[0];
+
+        return res.status(200).json({
+            total: parseInt(row.total, 10),
+            by_severity: {
+                critical: parseInt(row.critical, 10),
+                urgent: parseInt(row.urgent, 10),
+                standard: parseInt(row.standard, 10),
+                untriaged: parseInt(row.untriaged, 10)
+            },
+            by_source: {
+                manual: parseInt(row.manual, 10),
+                zero_touch: parseInt(row.zero_touch, 10),
+                iot_node: parseInt(row.iot_node, 10),
+                sonic_cascade: parseInt(row.sonic_cascade, 10)
+            },
+            resolved: parseInt(row.resolved, 10),
+            active_nodes: 6,
+            last_updated: new Date().toISOString()
+        });
+    } catch (dbErr) {
+        console.error('SOS stats query failed:', dbErr.message);
+        return res.status(500).json({
+            error: true,
+            code: 'DB_ERROR',
+            message: 'Failed to fetch SOS stats.'
+        });
+    }
+});
+
 // PATCH /api/sos/:id/triage — AI triage callback (Shrinidhi's service only)
 router.patch('/:id/triage', async (req, res) => {
     const id = parseInt(req.params.id, 10);
@@ -232,10 +291,10 @@ router.patch('/:id/triage', async (req, res) => {
 
         const updated = result.rows[0];
 
-        // ── WebSocket Emit ──────────────────────────────────────
+        // ── Emit WebSocket Event ────────────────────────────────────
         try {
-            const { io } = require('../../server');
-            io.emit('triage-complete', {
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('triage-complete', {
                 id: updated.id,
                 severity: updated.severity,
                 label: updated.label,
