@@ -34,7 +34,7 @@ dependencies:
   sensors_plus: ^4.0.2            # accelerometer for zero-touch
   geolocator: ^11.0.0             # GPS for lat/lng in SOS payload
   permission_handler: ^11.3.0     # runtime permission requests
-  flutter_foreground_task: ^8.5.0 # Android foreground service + WAKE_LOCK
+  flutter_foreground_task: ^9.2.1 # Android foreground service + WAKE_LOCK
   flutter_blue_plus: ^1.31.0      # BLE advertisements for Sonic Cascade fallback
   shared_preferences: ^2.2.2      # persist settings across restarts
 

@@ -1,6 +1,6 @@
 class Config {
   // Backend URL — UPDATE THIS when ngrok/Railway URL changes
-  static const String backendUrl = 'REPLACE_WITH_BACKEND_URL';
+  static const String backendUrl = 'https://tempestuous-cleopatra-scabbily.ngrok-free.dev';
 
   // Source enum strings — MUST match api-contract.json exactly
   // Use ONLY these strings. Never modify them.

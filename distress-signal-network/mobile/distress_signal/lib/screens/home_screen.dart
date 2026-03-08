@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../services/shake_detector.dart';
+import '../services/sonic_cascade.dart';
 import '../constants/config.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -27,12 +27,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // 1. Initialize and Start Background Service
     _initForegroundTask().then((_) => _startService());
+    
+    // 2. Core App Logic
     _fetchLocation();
     _checkConnection();
     _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkConnection());
     
-    // Initialize Shake Detector for Zero-Touch
+    // 3. Initialize Shake Detector for Zero-Touch
     _shakeDetector = ShakeDetector(
       onShake: () {
         print('Physical Impact Detected!');
@@ -60,24 +63,21 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       iosNotificationOptions: const IOSNotificationOptions(),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.nothing(),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
+        // This is the missing required parameter for v9.2.1
+        eventAction: ForegroundTaskEventAction.nothing(),
       ),
     );
   }
 
   Future<void> _startService() async {
-    if (await FlutterForegroundTask.isRunningService) {
-      return;
-    }
+    if (await FlutterForegroundTask.isRunningService) return;
 
-    // Start the service with a "sticky" notification
     await FlutterForegroundTask.startService(
       notificationTitle: 'DIST.RESS Active',
       notificationText: 'Zero-Touch monitoring is running in background',
-      notificationIcon: null, // Uses app icon by default
     );
   }
 
@@ -116,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // The master function to send the payload to Aryan's backend
   Future<void> _triggerSos(String source, {Map<String, dynamic>? metadata}) async {
     if (_sosSubmitting) return;
     setState(() {
@@ -125,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // Ensure specific message for zero-touch per requirements
       String msg = (source == Config.sourceZeroTouch) 
           ? Config.zeroTouchMessage 
           : 'Emergency SOS triggered manually';
@@ -156,9 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Dev Backdoor: Simulates a shake but adds metadata flag
   void _onDevButtonPress() {
-    print('Dev button triggered');
     _triggerSos(Config.sourceZeroTouch, metadata: {'dev_triggered': true});
   }
 
@@ -220,6 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+            const Spacer(),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
@@ -230,7 +227,32 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _sosSubmitting
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text('SOS', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
-            )
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.red),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: (_sosSubmitting || _lat == null) ? null : () async {
+                setState(() => _sosSubmitting = true);
+                try {
+                  String mockSignal = '{"lat": $_lat, "lng": $_lng}';
+                  await SonicCascadeService.relayReceivedSignal(mockSignal);
+                  
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sonic Cascade Relay Successful!'), backgroundColor: Colors.purple)
+                    );
+                  }
+                } catch (e) {
+                  print('Relay failed: $e');
+                } finally {
+                  setState(() => _sosSubmitting = false);
+                }
+              },
+              child: const Text('Simulate Sonic Relay', style: TextStyle(color: Colors.red)),
+            ),
           ],
         ),
       ),
