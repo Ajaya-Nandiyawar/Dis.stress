@@ -10,7 +10,7 @@ coverage/
 build/
 dist/
 
-# Env
+# Env files — NEVER push secrets
 .env
 .env.local
 .env.development.local
@@ -19,12 +19,29 @@ dist/
 
 # Misc
 .DS_Store
+Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .eslintcache
 
-# Project Specific
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Desktop.ini
+ehthumbs.db
+
+# Backend specific
+backend/node_modules/
+backend/.env
+backend/package-lock.json
+
+# Frontend specific
 distress-signal-network/frontend/node_modules/
 distress-signal-network/frontend/build/
 distress-signal-network/frontend/.env
+distress-signal-network/frontend/package-lock.json

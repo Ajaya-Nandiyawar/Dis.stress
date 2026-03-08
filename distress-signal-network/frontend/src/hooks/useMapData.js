@@ -38,7 +38,15 @@ export const useMapData = (mapRef) => {
             type: 'heatmap',
             source: 'sos-data',
             paint: {
-                'heatmap-weight': ['interpolate', ['linear'], ['get', 'severity'], 1, 1.0, 2, 0.6, 3, 0.2, 0.1],
+                'heatmap-weight': [
+                    'interpolate',
+                    ['linear'],
+                    ['coalesce', ['get', 'severity'], 0],
+                    0, 0,
+                    1, 1,
+                    2, 0.6,
+                    3, 0.2
+                ],
                 'heatmap-intensity': 1.5,
                 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.4, '#FF8800', 0.8, '#FF0000'],
                 'heatmap-radius': 30,
@@ -58,39 +66,6 @@ export const useMapData = (mapRef) => {
                 'circle-stroke-color': '#FFFFFF',
                 'circle-opacity': 0.9
             }
-        });
-
-        // Popup Logic
-        mapRef.current.on('click', 'sos-circles', (e) => {
-            const coordinates = e.features[0].geometry.coordinates.slice();
-            const { message, label, source, created_at, colour } = e.features[0].properties;
-
-            const html = `
-        <div style="color: #fff; padding: 5px;">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
-            <div style="width: 12px; height: 12px; border-radius: 50%; background: ${colour}; border: 1px solid #fff;"></div>
-            <strong style="font-size: 14px;">${label.toUpperCase()}</strong>
-          </div>
-          <p style="margin: 0 0 8px 0; font-size: 13px; line-height: 1.4;">${message}</p>
-          <div style="font-size: 11px; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 5px;">
-            <div>Source: ${source}</div>
-            <div>Time: ${new Date(created_at).toLocaleString()}</div>
-          </div>
-        </div>
-      `;
-
-            new mapboxgl.Popup({ backgroundColor: '#1A1B1E', closeButton: false })
-                .setLngLat(coordinates)
-                .setHTML(html)
-                .addTo(mapRef.current);
-        });
-
-        mapRef.current.on('mouseenter', 'sos-circles', () => {
-            mapRef.current.getCanvas().style.cursor = 'pointer';
-        });
-
-        mapRef.current.on('mouseleave', 'sos-circles', () => {
-            mapRef.current.getCanvas().style.cursor = '';
         });
     };
 
