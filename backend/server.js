@@ -7,9 +7,11 @@ const routes = require('./api/routes');
 const { connectDB } = require('./db/pool');
 const { connectPublisher } = require('./redis/publisher');
 const { connectSubscriber } = require('./redis/subscriber');
+const { initSocket } = require('./ws/socket');
 
 const app = express();
 const server = http.createServer(app);
+const io = initSocket(server);
 
 // Middleware
 app.use(cors({ origin: '*' }));
@@ -46,4 +48,4 @@ const PORT = process.env.PORT || 3001;
   });
 })();
 
-module.exports = { app, server };
+module.exports = { app, server, io };
