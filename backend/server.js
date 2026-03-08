@@ -16,7 +16,8 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // ── Root-level routes (not prefixed with /api) ──────────────
-// Health check will be mounted here in Prompt 5: app.get('/health', ...)
+const healthHandler = require('./api/handlers/health');
+app.get('/health', healthHandler);
 
 // ── API routes (prefixed with /api) ─────────────────────────
 app.use('/api', routes);
