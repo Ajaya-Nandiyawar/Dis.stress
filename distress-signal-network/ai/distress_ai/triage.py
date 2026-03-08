@@ -1,129 +1,76 @@
 """
-Rule-based triage classifier for SOS reports.
+NLP Triage Classifier — maps raw citizen messages to severity 1, 2, or 3.
 
-Scores messages by urgency signals (keywords, punctuation, capitalization)
-and maps them to a severity level with a confidence score.
+Must complete classification within 500 ms so the dashboard can flip
+the SOS marker from grey (new) to coloured (triaged).
+
+Severity mapping:
+  1  CRITICAL — Trapped   #FF0000   (trapped, buried, unconscious, collapse, impact, pinned, stuck under, cannot move)
+  2  URGENT — Medical     #FF8800   (injured, bleeding, medical, ambulance, broken, hurt, wound, accident)
+  3  STANDARD — Supplies  #FFFF00   (food, water, shelter, supplies, stranded)
+  default → 2 (URGENT) as safe fallback
 """
 
 from __future__ import annotations
 
-import re
-from typing import Dict, List, Set, Tuple
+from typing import List, Tuple
 
-from distress_ai.models import SOSReport, Severity, TriageResult
+from distress_ai.models import SOSReport, TriageResult
 
-# ── Keyword dictionaries (lowercase) ────────────────────
+# ── Keyword tiers  (checked top-down, first match wins) ─
 
-_CRITICAL_KEYWORDS: Set[str] = {
-    "bomb", "explosion", "shooting", "gunfire", "hostage", "kidnap",
-    "active shooter", "terrorist", "massacre", "mass casualty",
-    "chemical attack", "biological attack", "nuclear",
-}
-
-_HIGH_KEYWORDS: Set[str] = {
-    "fire", "trapped", "bleeding", "stabbed", "drowning", "collapsed",
-    "earthquake", "flood", "tsunami", "tornado", "hurricane",
-    "heart attack", "not breathing", "unconscious", "dying",
-    "assault", "robbery", "weapon", "knife", "gun",
-    "help", "help me", "save me", "please help", "emergency",
-}
-
-_MEDIUM_KEYWORDS: Set[str] = {
-    "accident", "crash", "injured", "broken", "pain", "fell",
-    "suspicious", "theft", "stolen", "missing", "lost child",
-    "power outage", "gas leak", "smoke", "sirens",
-    "need help", "urgent", "danger",
-}
-
-_LOW_KEYWORDS: Set[str] = {
-    "noise complaint", "stray animal", "pothole", "graffiti",
-    "litter", "parking", "traffic", "minor", "non-emergency",
-}
-
-# Mapping each keyword set to its (severity,  base_score)
-_KEYWORD_TIERS: List[Tuple[Set[str], Severity, float]] = [
-    (_CRITICAL_KEYWORDS, Severity.CRITICAL, 0.95),
-    (_HIGH_KEYWORDS,     Severity.HIGH,     0.80),
-    (_MEDIUM_KEYWORDS,   Severity.MEDIUM,   0.60),
-    (_LOW_KEYWORDS,      Severity.LOW,      0.40),
+_SEVERITY_KEYWORDS: List[Tuple[int, List[str]]] = [
+    (1, [
+        "trapped", "buried", "unconscious", "collapse",
+        "impact", "pinned", "stuck under", "cannot move",
+    ]),
+    (2, [
+        "injured", "bleeding", "medical", "ambulance",
+        "broken", "hurt", "wound", "accident",
+    ]),
+    (3, [
+        "food", "water", "shelter", "supplies", "stranded",
+    ]),
 ]
 
+# ── Severity → label + colour  (em-dash \u2014, not hyphen) ──
 
-# ── Helper scoring functions ────────────────────────────
+_SEVERITY_MAP = {
+    1: ("CRITICAL \u2014 Trapped",  "#FF0000"),
+    2: ("URGENT \u2014 Medical",    "#FF8800"),
+    3: ("STANDARD \u2014 Supplies", "#FFFF00"),
+}
 
-def _keyword_score(text: str) -> Tuple[Severity, float, List[str]]:
-    """Return the highest-matching severity, its base confidence, and matched tags."""
-    lower = text.lower()
-    for keywords, severity, base_score in _KEYWORD_TIERS:
-        matched = [kw for kw in keywords if kw in lower]
-        if matched:
-            boost = min(len(matched) - 1, 3) * 0.02
-            return severity, min(base_score + boost, 1.0), matched
-    return Severity.LOW, 0.30, []
-
-
-def _urgency_modifiers(text: str) -> Dict[str, float]:
-    """Heuristic modifiers based on writing style."""
-    mods: Dict[str, float] = {}
-
-    alpha_chars = [c for c in text if c.isalpha()]
-    if alpha_chars:
-        caps_ratio = sum(1 for c in alpha_chars if c.isupper()) / len(alpha_chars)
-        if caps_ratio > 0.6:
-            mods["ALL_CAPS"] = 0.05
-
-    excl_count = text.count("!")
-    if excl_count >= 3:
-        mods["EXCLAMATIONS"] = 0.03
-
-    words = text.lower().split()
-    if len(words) >= 3:
-        repeats = sum(1 for a, b in zip(words, words[1:]) if a == b)
-        if repeats >= 2:
-            mods["REPETITION"] = 0.04
-
-    if 0 < len(text.strip()) < 30:
-        mods["SHORT_URGENT"] = 0.02
-
-    return mods
-
-
-def _maybe_escalate(severity: Severity, confidence: float) -> Severity:
-    """Escalate severity by one level if confidence is very high."""
-    order = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
-    idx = order.index(severity)
-    if confidence >= 0.92 and idx < len(order) - 1:
-        return order[idx + 1]
-    return severity
+_DEFAULT_SEVERITY = 2
 
 
 # ── Public API ──────────────────────────────────────────
 
-def classify(report: SOSReport) -> TriageResult:
+async def classify(report: SOSReport) -> TriageResult:
     """
-    Run the triage classifier on an SOS report.
+    Classify an SOS report by scanning ``report.message`` for keywords.
 
-    Returns a TriageResult with severity, confidence, matched tags,
-    and a human-readable reasoning string.
+    Returns a ``TriageResult`` with integer severity (1/2/3),
+    human-readable label, hex colour, and matched tags.
+
+    If no keywords match, defaults to severity 2 (URGENT).
     """
-    text = report.message
+    text = report.message.lower()
+    matched_tags: List[str] = []
+    severity = _DEFAULT_SEVERITY
 
-    severity, confidence, tags = _keyword_score(text)
-    mods = _urgency_modifiers(text)
-    for label, delta in mods.items():
-        confidence = min(confidence + delta, 1.0)
-        tags.append(label)
+    for sev, keywords in _SEVERITY_KEYWORDS:
+        hits = [kw for kw in keywords if kw in text]
+        if hits:
+            severity = sev
+            matched_tags = hits
+            break                       # first tier wins
 
-    severity = _maybe_escalate(severity, confidence)
-
-    reasoning_parts = [f"Matched keywords: {', '.join(tags) if tags else 'none'}"]
-    if mods:
-        reasoning_parts.append(f"Urgency signals: {', '.join(mods.keys())}")
-    reasoning_parts.append(f"Final severity: {severity.value} ({confidence:.0%} confidence)")
+    label, colour = _SEVERITY_MAP[severity]
 
     return TriageResult(
         severity=severity,
-        confidence=round(confidence, 4),
-        tags=tags,
-        reasoning=" | ".join(reasoning_parts),
+        label=label,
+        colour=colour,
+        tags=matched_tags,
     )

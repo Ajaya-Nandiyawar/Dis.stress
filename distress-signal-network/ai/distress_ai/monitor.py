@@ -1,13 +1,23 @@
 """
-Social-media / NLP threat monitor.
+Social-media / NLP background alert monitor.
 
-Periodically scans a *simulated* social-media feed and runs a keyword /
-sentiment scorer.  When a post's threat confidence reaches the configured
-threshold (default 0.85), it fires POST /api/alert/trigger to the Node.js
-backend so dashboards get an instant broadcast.
+Polls a simulated text feed every MONITOR_INTERVAL_SECONDS.  For each
+synthetic message, runs NLP to detect threat type and confidence.
 
-The simulated feed is designed to be trivially replaceable with a real
-data source (Reddit via PRAW, RSS feeds, NewsAPI, etc.).
+Threat types (exact enum strings):
+  'earthquake' | 'flood' | 'blast' | 'fire' | 'stampede'
+
+If confidence >= 0.85 AND no cooldown for the threat_type:
+  → POST {BACKEND_URL}/api/alert/trigger
+    { type, confidence, lat, lng, source: 'nlp' }
+
+If confidence < 0.85:
+  → log 'monitoring: {type} at {confidence}', do nothing else.
+
+Cooldown is populated by the 'alert-broadcast' Redis subscriber
+(Prompt 2) and checked via is_on_cooldown(threat_type).
+
+NEVER crashes — all work wrapped in try/except.
 """
 
 from __future__ import annotations
@@ -15,61 +25,72 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import datetime
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set, Tuple
 
 from distress_ai.config import settings
 from distress_ai.models import AlertPayload
 from distress_ai.routing import post_alert_trigger
+from distress_ai.subscriber import is_on_cooldown
 
 logger = logging.getLogger("distress.monitor")
 
 # ── Threat keyword dictionaries ─────────────────────────
+# Map each threat type enum to detection keywords.
 
 _THREAT_KEYWORDS: Dict[str, Set[str]] = {
-    "violence": {
-        "attack", "bomb", "shooting", "riot", "assault",
-        "weapon", "explosion", "hostage", "gunfire", "stabbing",
+    "earthquake": {
+        "earthquake", "tremor", "seismic", "quake",
+        "buildings shaking", "richter",
     },
-    "natural_disaster": {
-        "earthquake", "flood", "tsunami", "hurricane", "tornado",
-        "wildfire", "landslide", "cyclone", "volcanic eruption",
+    "flood": {
+        "flood", "flooding", "submerged", "water level",
+        "dam breach", "inundation", "waterlogged",
     },
-    "public_health": {
-        "outbreak", "pandemic", "contamination", "toxic",
-        "biohazard", "quarantine", "epidemic", "mass poisoning",
+    "blast": {
+        "blast", "bomb", "explosion", "detonation",
+        "explosive", "ied", "shrapnel",
     },
-    "infrastructure": {
-        "bridge collapse", "building collapse", "dam breach",
-        "power grid failure", "gas explosion", "derailment",
+    "fire": {
+        "fire", "blaze", "inferno", "wildfire",
+        "smoke", "burning", "flames", "arson",
+    },
+    "stampede": {
+        "stampede", "crowd crush", "crowd surge",
+        "crowd panic", "trampled", "overcrowding",
     },
 }
 
-# ── Simulated social-media feed ─────────────────────────
+# ── Simulated threat scenarios (synthetic feed) ─────────
 
-_SIMULATED_POSTS: List[Dict[str, str]] = [
-    {"text": "Beautiful sunset at the park today",                         "location": ""},
-    {"text": "Just saw smoke rising near the industrial area, several explosions heard",
-     "location": "12.92,77.60"},
-    {"text": "Traffic is terrible on MG Road as usual",                    "location": "12.97,77.62"},
-    {"text": "BREAKING: Reports of flooding in low-lying areas after heavy rain, people trapped",
-     "location": "13.01,77.55"},
-    {"text": "New cafe opened on Church Street, great coffee!",            "location": ""},
-    {"text": "Heard gunfire near the railway station, people running",     "location": "12.98,77.57"},
-    {"text": "My dog is so cute",                                          "location": ""},
+_SIMULATED_POSTS: List[Dict] = [
+    {"text": "Beautiful sunset at the park today",
+     "lat": 18.52, "lng": 73.86},
     {"text": "Major earthquake tremors felt across the city, buildings shaking violently",
-     "location": "12.95,77.58"},
-    {"text": "Enjoying the cricket match at Chinnaswamy",                  "location": ""},
-    {"text": "Suspicious package found at metro station, area being evacuated",
-     "location": "12.99,77.61"},
+     "lat": 12.95, "lng": 77.58},
+    {"text": "Traffic is terrible on MG Road as usual",
+     "lat": 12.97, "lng": 77.62},
+    {"text": "BREAKING: Reports of severe flooding in low-lying areas, water level rising fast",
+     "lat": 13.01, "lng": 77.55},
+    {"text": "New cafe opened on Church Street, great coffee!",
+     "lat": 12.98, "lng": 77.60},
+    {"text": "Massive explosion heard near the industrial area, blast shattered windows",
+     "lat": 12.92, "lng": 77.60},
+    {"text": "My dog is so cute",
+     "lat": 18.50, "lng": 73.85},
+    {"text": "URGENT: Fire spreading rapidly through the warehouse district, thick smoke visible",
+     "lat": 19.08, "lng": 72.88},
+    {"text": "Enjoying the cricket match at Chinnaswamy",
+     "lat": 12.98, "lng": 77.60},
+    {"text": "Crowd stampede reported at concert venue, people trampled and injured",
+     "lat": 28.61, "lng": 77.21},
 ]
 
 
 # ── Threat scoring ──────────────────────────────────────
 
-def _score_post(text: str) -> tuple[str, float, List[str]]:
+def _score_post(text: str) -> Tuple[str, float, List[str]]:
     """
-    Score a social-media post for threat level.
+    Score a post for threat level.
     Returns (threat_type, confidence, matched_keywords).
     """
     lower = text.lower()
@@ -81,8 +102,10 @@ def _score_post(text: str) -> tuple[str, float, List[str]]:
         matched = [kw for kw in keywords if kw in lower]
         if not matched:
             continue
+        # base confidence + boost for multiple keyword hits
         score = 0.70 + min(len(matched), 4) * 0.07
-        if any(w in lower for w in ("breaking", "urgent", "emergency", "just now")):
+        # urgency signals
+        if any(w in lower for w in ("breaking", "urgent", "emergency", "massive")):
             score += 0.05
         caps_ratio = sum(1 for c in text if c.isupper()) / max(len(text), 1)
         if caps_ratio > 0.4:
@@ -105,18 +128,19 @@ _running = False
 async def monitor_loop() -> None:
     """
     Async background task: polls the simulated feed at the configured
-    interval and fires alerts when threats are detected.
+    interval and fires POST /api/alert/trigger when confidence >= 0.85.
     """
     global _running
     _running = True
     logger.info(
         "[INIT]  Social-media monitor started  (poll every %ds, threshold %.2f)",
-        settings.monitor_poll_interval,
+        settings.monitor_interval_seconds,
         settings.alert_confidence_threshold,
     )
 
     while _running:
         try:
+            # Pick a random subset from the simulated feed
             batch = random.sample(
                 _SIMULATED_POSTS, k=min(3, len(_SIMULATED_POSTS))
             )
@@ -124,32 +148,38 @@ async def monitor_loop() -> None:
             for post in batch:
                 threat_type, confidence, kws = _score_post(post["text"])
 
-                if confidence >= settings.alert_confidence_threshold:
-                    logger.warning(
-                        "[ALERT]  Threat detected!  type=%s  conf=%.2f  kws=%s",
-                        threat_type, confidence, kws,
-                    )
-                    payload = AlertPayload(
-                        source="social-media-monitor",
-                        threat_type=threat_type,
-                        description=f"Potential {threat_type} detected via social media.",
-                        confidence=confidence,
-                        detected_at=datetime.utcnow().isoformat(),
-                        raw_text=post["text"],
-                        location=post.get("location") or None,
-                    )
-                    await post_alert_trigger(payload)
-                else:
+                if confidence < settings.alert_confidence_threshold:
                     if confidence > 0:
-                        logger.debug(
-                            "[INFO]  Sub-threshold post  type=%s  conf=%.2f",
-                            threat_type, confidence,
+                        logger.info(
+                            "monitoring: %s at %.2f", threat_type, confidence,
                         )
+                    continue
+
+                # confidence >= 0.85 — check cooldown before calling backend
+                if is_on_cooldown(threat_type):
+                    logger.info(
+                        "[SKIP]  %s on cooldown, suppressing alert (conf=%.2f)",
+                        threat_type, confidence,
+                    )
+                    continue
+
+                logger.warning(
+                    "[ALERT]  Threat detected!  type=%s  conf=%.2f  kws=%s",
+                    threat_type, confidence, kws,
+                )
+                payload = AlertPayload(
+                    type=threat_type,
+                    confidence=confidence,
+                    lat=post["lat"],
+                    lng=post["lng"],
+                    source="nlp",
+                )
+                await post_alert_trigger(payload)
 
         except Exception:
             logger.exception("[FAIL]  Error in social-media monitor cycle")
 
-        await asyncio.sleep(settings.monitor_poll_interval)
+        await asyncio.sleep(settings.monitor_interval_seconds)
 
 
 def stop_monitor() -> None:

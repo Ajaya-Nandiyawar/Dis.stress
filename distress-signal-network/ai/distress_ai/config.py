@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # ── Social-media monitor ─────────────────────────────────
     alert_confidence_threshold: float = 0.85
-    monitor_poll_interval: int = 30          # seconds
+    monitor_interval_seconds: int = 30       # configurable via env
 
     # ── Server ───────────────────────────────────────────────
     host: str = "0.0.0.0"
