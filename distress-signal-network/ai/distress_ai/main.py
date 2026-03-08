@@ -154,6 +154,44 @@ async def root():
 
 # ── OR-Tools TSP Route Optimisation ─────────────────────
 
+@app.post("/optimise", tags=["routing"])
+async def simple_optimise(request: Request):
+    """
+    Simplified endpoint exactly as requested by the Node.js backend.
+    Accepts depot + waypoints without strict metadata.
+    Returns: { "ordered_waypoint_ids": [42, 41, 40] }
+    """
+    body = await request.json()
+
+    depot = body.get("depot")
+    waypoints = body.get("waypoints", [])
+
+    if not depot or "lat" not in depot or "lng" not in depot:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "code": "INVALID_DEPOT", "message": "Depot must include lat and lng."},
+        )
+    if len(waypoints) > MAX_WAYPOINTS:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": True,
+                "code": "TOO_MANY_WAYPOINTS",
+                "message": f"Maximum {MAX_WAYPOINTS} waypoints allowed. Received: {len(waypoints)}",
+            },
+        )
+    if not waypoints:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "code": "NO_WAYPOINTS", "message": "At least 1 waypoint is required."},
+        )
+
+    result = optimise_route(depot, waypoints)
+    ordered_ids = [stop["id"] for stop in result["route"]]
+    
+    return {"ordered_waypoint_ids": ordered_ids}
+
+
 @app.post("/routing/optimise", tags=["routing"])
 async def routing_optimise(request: Request):
     """
