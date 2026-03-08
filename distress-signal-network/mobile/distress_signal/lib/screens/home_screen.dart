@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../services/shake_detector.dart';
@@ -25,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _initForegroundTask().then((_) => _startService());
     _fetchLocation();
     _checkConnection();
     _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkConnection());
@@ -44,6 +47,38 @@ class _HomeScreenState extends State<HomeScreen> {
     _healthTimer?.cancel();
     _shakeDetector.stopListening();
     super.dispose();
+  }
+
+  Future<void> _initForegroundTask() async {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'distress_service',
+        channelName: 'DIST.RESS Protection',
+        channelDescription: 'Monitoring for physical impacts...',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.nothing(),
+        autoRunOnBoot: true,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+  }
+
+  Future<void> _startService() async {
+    if (await FlutterForegroundTask.isRunningService) {
+      return;
+    }
+
+    // Start the service with a "sticky" notification
+    await FlutterForegroundTask.startService(
+      notificationTitle: 'DIST.RESS Active',
+      notificationText: 'Zero-Touch monitoring is running in background',
+      notificationIcon: null, // Uses app icon by default
+    );
   }
 
   Future<void> _checkConnection() async {
