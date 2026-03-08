@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
+import '../services/shake_detector.dart';
+import '../constants/config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _sosSubmitting = false;
   String _lastStatus = 'Idle';
   Timer? _healthTimer;
+  late ShakeDetector _shakeDetector;
 
   @override
   void initState() {
@@ -25,11 +28,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchLocation();
     _checkConnection();
     _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkConnection());
+    
+    // Initialize Shake Detector for Zero-Touch
+    _shakeDetector = ShakeDetector(
+      onShake: () {
+        print('Physical Impact Detected!');
+        _triggerSos(Config.sourceZeroTouch);
+      }
+    );
+    _shakeDetector.startListening();
   }
 
   @override
   void dispose() {
     _healthTimer?.cancel();
+    _shakeDetector.stopListening();
     super.dispose();
   }
 
@@ -45,23 +58,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() => _locationText = 'Location services disabled');
+      setState(() => _locationText = 'Location disabled');
       return;
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        setState(() => _locationText = 'Location permission denied');
-        return;
-      }
+      if (permission == LocationPermission.denied) return;
     }
-
-    if (permission == LocationPermission.deniedForever) {
-      setState(() => _locationText = 'Location permissions permanently denied');
-      return;
-    }
+    if (permission == LocationPermission.deniedForever) return;
 
     try {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
@@ -75,8 +81,50 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // The master function to send the payload to Aryan's backend
+  Future<void> _triggerSos(String source, {Map<String, dynamic>? metadata}) async {
+    if (_sosSubmitting) return;
+    setState(() {
+      _sosSubmitting = true;
+      _lastStatus = 'Sending $source SOS...';
+    });
+
+    try {
+      // Ensure specific message for zero-touch per requirements
+      String msg = (source == Config.sourceZeroTouch) 
+          ? Config.zeroTouchMessage 
+          : 'Emergency SOS triggered manually';
+
+      await ApiService.submitSos(
+        lat: _lat ?? 0.0,
+        lng: _lng ?? 0.0,
+        message: msg,
+        source: source,
+        metadata: metadata,
+      );
+      
+      setState(() => _lastStatus = 'Success: $source sent');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$source SOS Sent Successfully!'), backgroundColor: Colors.green)
+        );
+      }
+    } catch (e) {
+      setState(() => _lastStatus = 'Failed to connect');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Network Error: Could not reach backend'), backgroundColor: Colors.red)
+        );
+      }
+    } finally {
+      setState(() => _sosSubmitting = false);
+    }
+  }
+
+  // Dev Backdoor: Simulates a shake but adds metadata flag
   void _onDevButtonPress() {
     print('Dev button triggered');
+    _triggerSos(Config.sourceZeroTouch, metadata: {'dev_triggered': true});
   }
 
   @override
@@ -143,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: _sosSubmitting ? null : () {}, // SOS submit logic stubbed for next prompt
+              onPressed: () => _triggerSos(Config.sourceManual), 
               child: _sosSubmitting
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text('SOS', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
