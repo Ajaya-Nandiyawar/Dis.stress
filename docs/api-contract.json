@@ -1,0 +1,680 @@
+{
+  "_meta": {
+    "project": "DIST.RESS Signal Network",
+    "team": "Team Mario — BlueBit 4.0",
+    "owner": "Aryan Ketkar (Backend Lead)",
+    "base_url": "REPLACE_WITH_RAILWAY_URL",
+    "version": "1.0.0",
+    "last_updated": "2026-03-07",
+    "note": "This is the source of truth. No field name changes without announcing in group chat first."
+  },
+
+  "endpoints": [
+
+    {
+      "id": "health-check",
+      "endpoint": "/health",
+      "method": "GET",
+      "description": "Verify backend is alive. Call this before any other request. Used by keep-warm pings from AI service every 5 minutes.",
+      "request": {
+        "headers": {},
+        "body": null
+      },
+      "responses": {
+        "200": {
+          "description": "Server is running",
+          "body": {
+            "status": "ok",
+            "time": "2026-03-08T10:00:00.000Z",
+            "db": "connected",
+            "redis": "connected"
+          }
+        },
+        "503": {
+          "description": "Server is up but database or Redis is down",
+          "body": {
+            "status": "degraded",
+            "time": "2026-03-08T10:00:00.000Z",
+            "db": "disconnected",
+            "redis": "connected"
+          }
+        }
+      },
+      "used_by": ["Ajinkya — connection status indicator in dashboard", "Shrinidhi — AI service keep-warm ping", "Ajaya — Flutter app connection dot"]
+    },
+
+    {
+      "id": "submit-sos",
+      "endpoint": "/api/sos",
+      "method": "POST",
+      "description": "Submit an SOS report. Used by Flutter manual tap, Zero-Touch auto-trigger, IoT simulator, and Sonic Cascade relay. Severity is NOT sent by the caller — it is assigned asynchronously by the AI triage service after saving.",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "lat": 18.5204,
+          "lng": 73.8567,
+          "message": "Building collapsed, 3 people trapped under debris",
+          "source": "manual",
+          "node_id": null,
+          "metadata": {}
+        },
+        "field_rules": {
+          "lat": "REQUIRED. Float. Decimal degrees. Range -90 to 90.",
+          "lng": "REQUIRED. Float. Decimal degrees. Range -180 to 180.",
+          "message": "REQUIRED. String. Max 500 characters.",
+          "source": "REQUIRED. Enum: 'manual' | 'zero-touch' | 'iot_node' | 'sonic_cascade'",
+          "node_id": "OPTIONAL. String. Only present when source is 'iot_node'. e.g. 'node-001'. Pass null otherwise.",
+          "metadata": "OPTIONAL. JSON object. Dump any surprise-requirement data here. e.g. {people_count:3, battery_pct:82}. Pass empty object {} if nothing extra."
+        }
+      },
+      "responses": {
+        "201": {
+          "description": "SOS saved successfully. Severity is null — it will be filled in by AI triage within ~500ms and pushed via WebSocket 'triage-complete' event.",
+          "body": {
+            "received": true,
+            "id": 42,
+            "lat": 18.5204,
+            "lng": 73.8567,
+            "message": "Building collapsed, 3 people trapped under debris",
+            "source": "manual",
+            "severity": null,
+            "created_at": "2026-03-08T10:05:23.412Z"
+          }
+        },
+        "400": {
+          "description": "Missing or invalid required field",
+          "body": {
+            "error": true,
+            "code": "VALIDATION_FAILED",
+            "message": "Missing required field: lat",
+            "fields": ["lat"]
+          }
+        },
+        "500": {
+          "description": "Database write failed",
+          "body": {
+            "error": true,
+            "code": "DB_ERROR",
+            "message": "Failed to save SOS report. Please retry."
+          }
+        }
+      },
+      "websocket_side_effect": "Immediately after 201 response, backend emits Socket.io event 'new-sos' to all dashboard clients with the saved record (severity: null). A second event 'triage-complete' fires ~500ms later with the AI severity result.",
+      "used_by": ["Ajaya — Flutter manual SOS button", "Ajaya — Zero-Touch auto-trigger (source: zero-touch)", "Ajaya — ESP32 simulator (source: iot_node, includes node_id)", "Ajaya — Sonic Cascade relay (source: sonic_cascade)"]
+    },
+
+    {
+      "id": "triage-update",
+      "endpoint": "/api/sos/:id/triage",
+      "method": "PATCH",
+      "description": "Called ONLY by the AI service (Shrinidhi) after triage classification is complete. Updates severity on an existing SOS record. Frontend/Mobile never call this directly.",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "params": {
+          "id": "INTEGER — the id returned from POST /api/sos"
+        },
+        "body": {
+          "severity": 1,
+          "label": "CRITICAL — Trapped",
+          "colour": "#FF0000"
+        },
+        "field_rules": {
+          "severity": "REQUIRED. Integer 1, 2, or 3. 1=Critical/Trapped. 2=Urgent/Medical. 3=Standard/Supplies.",
+          "label": "REQUIRED. Human-readable string for UI display.",
+          "colour": "REQUIRED. Hex colour string. 1=#FF0000, 2=#FF8800, 3=#FFFF00"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Triage update saved",
+          "body": {
+            "updated": true,
+            "id": 42,
+            "severity": 1,
+            "label": "CRITICAL — Trapped",
+            "colour": "#FF0000",
+            "triaged_at": "2026-03-08T10:05:23.890Z"
+          }
+        },
+        "404": {
+          "description": "SOS record with this ID does not exist",
+          "body": {
+            "error": true,
+            "code": "NOT_FOUND",
+            "message": "SOS report with id 42 not found"
+          }
+        }
+      },
+      "websocket_side_effect": "After 200 response, backend emits Socket.io event 'triage-complete' to all dashboard clients: {id:42, severity:1, label:'CRITICAL — Trapped', colour:'#FF0000'}",
+      "used_by": ["Shrinidhi — AI triage service only. Ajinkya and Ajaya never call this."]
+    },
+
+    {
+      "id": "heatmap-data",
+      "endpoint": "/api/sos/heatmap",
+      "method": "GET",
+      "description": "Returns all SOS reports for initial dashboard map load. Called once on page open. After that, use WebSocket events for live updates. Sorted newest first.",
+      "request": {
+        "headers": {},
+        "body": null,
+        "query_params": {
+          "limit": "OPTIONAL. Integer. Default 500. Max 1000.",
+          "severity": "OPTIONAL. Integer 1, 2, or 3. Filter by severity. Omit for all.",
+          "resolved": "OPTIONAL. Boolean. Default false. Pass true to include resolved reports."
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Array of SOS reports. May be empty array [] if no reports exist yet.",
+          "body": [
+            {
+              "id": 42,
+              "lat": 18.5204,
+              "lng": 73.8567,
+              "message": "Building collapsed, 3 people trapped under debris",
+              "source": "manual",
+              "node_id": null,
+              "severity": 1,
+              "label": "CRITICAL — Trapped",
+              "colour": "#FF0000",
+              "resolved": false,
+              "metadata": { "people_count": 3 },
+              "created_at": "2026-03-08T10:05:23.412Z",
+              "triaged_at": "2026-03-08T10:05:23.890Z"
+            },
+            {
+              "id": 41,
+              "lat": 18.5314,
+              "lng": 73.8446,
+              "message": "AUTO-SOS: Device impact detected",
+              "source": "zero-touch",
+              "node_id": null,
+              "severity": 1,
+              "label": "CRITICAL — Trapped",
+              "colour": "#FF0000",
+              "resolved": false,
+              "metadata": {},
+              "created_at": "2026-03-08T10:04:11.000Z",
+              "triaged_at": "2026-03-08T10:04:11.500Z"
+            },
+            {
+              "id": 40,
+              "lat": 18.5089,
+              "lng": 73.8259,
+              "message": "Multiple injuries at junction, need ambulances",
+              "source": "iot_node",
+              "node_id": "node-003",
+              "severity": 2,
+              "label": "URGENT — Medical",
+              "colour": "#FF8800",
+              "resolved": false,
+              "metadata": { "battery_pct": 78 },
+              "created_at": "2026-03-08T10:03:55.000Z",
+              "triaged_at": "2026-03-08T10:03:55.600Z"
+            }
+          ]
+        },
+        "500": {
+          "description": "Database query failed",
+          "body": {
+            "error": true,
+            "code": "DB_ERROR",
+            "message": "Failed to fetch heatmap data"
+          }
+        }
+      },
+      "mapbox_note": "CRITICAL for Ajinkya: Mapbox uses [longitude, latitude] coordinate order — the OPPOSITE of how they are stored in the database. When building the GeoJSON FeatureCollection, use geometry.coordinates = [record.lng, record.lat] — NOT [record.lat, record.lng]. Getting this backwards puts every marker in the ocean.",
+      "used_by": ["Ajinkya — initial Mapbox heatmap layer population on page load"]
+    },
+
+    {
+      "id": "trigger-alert",
+      "endpoint": "/api/alert/trigger",
+      "method": "POST",
+      "description": "Called by AI service when NLP confidence >= 0.85. Saves to alerts table and fires all broadcast channels concurrently: Cell Broadcast API, MQTT to ESP32 nodes, WebSocket to dashboard. Also called manually for testing.",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "type": "blast",
+          "confidence": 0.97,
+          "lat": 18.5204,
+          "lng": 73.8567,
+          "source": "nlp"
+        },
+        "field_rules": {
+          "type": "REQUIRED. Enum: 'earthquake' | 'flood' | 'blast' | 'fire' | 'stampede'",
+          "confidence": "REQUIRED. Float 0.0 to 1.0. Must be >= 0.85 to trigger broadcast. Requests below 0.85 return action:'monitoring'.",
+          "lat": "REQUIRED. Float. Epicentre of detected threat.",
+          "lng": "REQUIRED. Float. Epicentre of detected threat.",
+          "source": "REQUIRED. Enum: 'nlp' | 'iot' | 'manual'"
+        }
+      },
+      "responses": {
+        "200_broadcast": {
+          "description": "Confidence >= 0.85. Alert saved and all broadcast channels fired.",
+          "body": {
+            "broadcast": true,
+            "alert_id": 7,
+            "type": "blast",
+            "confidence": 0.97,
+            "channels_fired": ["cell_broadcast", "mqtt", "websocket", "push_notification"],
+            "triggered_at": "2026-03-08T10:10:00.000Z"
+          }
+        },
+        "200_monitoring": {
+          "description": "Confidence < 0.85. No broadcast fired. System continues monitoring.",
+          "body": {
+            "broadcast": false,
+            "action": "monitoring",
+            "confidence": 0.72,
+            "threshold": 0.85,
+            "message": "Confidence below threshold. Continuing to monitor."
+          }
+        },
+        "400": {
+          "description": "Missing required field or invalid threat type",
+          "body": {
+            "error": true,
+            "code": "VALIDATION_FAILED",
+            "message": "Invalid threat type: 'tornado'. Must be one of: earthquake, flood, blast, fire, stampede",
+            "fields": ["type"]
+          }
+        }
+      },
+      "websocket_side_effect": "When broadcast:true, emits Socket.io event 'broadcast-alert' to all dashboard clients: {alert_id:7, type:'blast', confidence:0.97, lat:18.5204, lng:73.8567, triggered_at:'...'}. Dashboard banner flips RED on this event.",
+      "used_by": ["Shrinidhi — AI NLP background monitor", "Ajaya — can trigger manually for testing via curl or Postman"]
+    },
+
+    {
+      "id": "optimise-route",
+      "endpoint": "/api/routing/optimise",
+      "method": "GET",
+      "description": "Fetches the top 15 Level 1 and Level 2 SOS reports, gets nearest available ambulance from resources table, calls AI TSP service, returns ordered waypoint list. Call this on 'Optimise Route' button click or auto-trigger every 60 seconds.",
+      "request": {
+        "headers": {},
+        "body": null,
+        "query_params": {
+          "ambulance_id": "OPTIONAL. Integer. Force a specific ambulance as depot. Omit to auto-select nearest available."
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "TSP route computed. Waypoints are in optimised order — draw them as a Mapbox LineString in this exact sequence.",
+          "body": {
+            "route": [
+              {
+                "stop": 1,
+                "id": 42,
+                "lat": 18.5204,
+                "lng": 73.8567,
+                "severity": 1,
+                "label": "CRITICAL — Trapped",
+                "colour": "#FF0000",
+                "message": "Building collapsed, 3 people trapped",
+                "distance_from_prev_m": 0,
+                "source": "manual"
+              },
+              {
+                "stop": 2,
+                "id": 41,
+                "lat": 18.5314,
+                "lng": 73.8446,
+                "severity": 1,
+                "label": "CRITICAL — Trapped",
+                "colour": "#FF0000",
+                "message": "AUTO-SOS: Device impact detected",
+                "distance_from_prev_m": 1420,
+                "source": "zero-touch"
+              },
+              {
+                "stop": 3,
+                "id": 40,
+                "lat": 18.5089,
+                "lng": 73.8259,
+                "severity": 2,
+                "label": "URGENT — Medical",
+                "colour": "#FF8800",
+                "message": "Multiple injuries at junction",
+                "distance_from_prev_m": 2310,
+                "source": "iot_node"
+              }
+            ],
+            "depot": {
+              "ambulance_id": 1,
+              "lat": 18.5150,
+              "lng": 73.8500,
+              "type": "ambulance"
+            },
+            "stops": 3,
+            "total_distance_m": 3730,
+            "solver": "or-tools-tsp",
+            "computed_at": "2026-03-08T10:15:00.000Z"
+          }
+        },
+        "200_no_sos": {
+          "description": "No unresolved Level 1 or Level 2 SOS reports in the database. Nothing to route.",
+          "body": {
+            "route": [],
+            "depot": null,
+            "stops": 0,
+            "message": "No active high-priority SOS reports to route."
+          }
+        },
+        "503": {
+          "description": "AI routing service is unavailable (Render cold start or crash). Backend returns this when the AI service does not respond within 5 seconds.",
+          "body": {
+            "error": true,
+            "code": "AI_SERVICE_UNAVAILABLE",
+            "message": "Routing service is temporarily unavailable. Retry in 30 seconds.",
+            "fallback": "greedy_nearest_neighbour",
+            "route": [
+              {
+                "stop": 1,
+                "id": 42,
+                "lat": 18.5204,
+                "lng": 73.8567,
+                "severity": 1,
+                "label": "CRITICAL — Trapped",
+                "colour": "#FF0000",
+                "distance_from_prev_m": 0
+              }
+            ],
+            "stops": 1
+          }
+        }
+      },
+      "mapbox_note": "To draw the route: build a GeoJSON LineString from the route array. coordinates = route.map(stop => [stop.lng, stop.lat]). Add depot as the first coordinate: [[depot.lng, depot.lat], ...route coords]. Remember Mapbox [lng, lat] order.",
+      "used_by": ["Ajinkya — 'Optimise Route' button and 60-second auto-trigger in dashboard"]
+    },
+
+    {
+      "id": "recent-alerts",
+      "endpoint": "/api/alerts/recent",
+      "method": "GET",
+      "description": "Returns the last 10 verified broadcast alerts for the dashboard history panel. Sorted newest first.",
+      "request": {
+        "headers": {},
+        "body": null,
+        "query_params": {
+          "limit": "OPTIONAL. Integer. Default 10. Max 50."
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Array of recent alerts. May be empty array [] if no alerts have been triggered yet.",
+          "body": [
+            {
+              "id": 7,
+              "threat_type": "blast",
+              "confidence": 0.97,
+              "lat": 18.5204,
+              "lng": 73.8567,
+              "source": "nlp",
+              "broadcast_fired": true,
+              "triggered_at": "2026-03-08T10:10:00.000Z"
+            },
+            {
+              "id": 6,
+              "threat_type": "earthquake",
+              "confidence": 0.91,
+              "lat": 18.5314,
+              "lng": 73.8446,
+              "source": "iot",
+              "broadcast_fired": true,
+              "triggered_at": "2026-03-08T09:45:00.000Z"
+            }
+          ]
+        }
+      },
+      "used_by": ["Ajinkya — Alert history timeline in dashboard sidebar"]
+    },
+
+    {
+      "id": "sos-stats",
+      "endpoint": "/api/sos/stats",
+      "method": "GET",
+      "description": "Returns live severity counts for the dashboard sidebar stat counters. Call on page load and listen for WebSocket updates to refresh.",
+      "request": {
+        "headers": {},
+        "body": null
+      },
+      "responses": {
+        "200": {
+          "description": "Live counts by severity and source",
+          "body": {
+            "total": 25,
+            "by_severity": {
+              "critical": 8,
+              "urgent": 10,
+              "standard": 7,
+              "untriaged": 0
+            },
+            "by_source": {
+              "manual": 12,
+              "zero_touch": 5,
+              "iot_node": 6,
+              "sonic_cascade": 2
+            },
+            "resolved": 0,
+            "active_nodes": 6,
+            "last_updated": "2026-03-08T10:15:00.000Z"
+          }
+        }
+      },
+      "used_by": ["Ajinkya — Severity counter badges at top of sidebar"]
+    }
+
+  ],
+
+  "websocket_events": {
+    "connection": {
+      "url": "REPLACE_WITH_RAILWAY_URL",
+      "library": "socket.io-client",
+      "note": "Socket.io auto-reconnects on disconnect. Show a small 'Reconnecting...' indicator in sidebar when disconnected. Do not panic — it is normal."
+    },
+    "events_from_server": {
+      "new-sos": {
+        "description": "Fired immediately when any new SOS arrives. Severity is null at this point — render as a grey marker.",
+        "payload": {
+          "id": 42,
+          "lat": 18.5204,
+          "lng": 73.8567,
+          "message": "Building collapsed, 3 people trapped",
+          "source": "manual",
+          "severity": null,
+          "colour": "#888888",
+          "created_at": "2026-03-08T10:05:23.412Z"
+        },
+        "ajinkya_action": "Add point to Mapbox GeoJSON source. Use coordinates [record.lng, record.lat]. Increment 'untriaged' counter in sidebar. Grey marker."
+      },
+      "triage-complete": {
+        "description": "Fired ~500ms after new-sos when AI triage assigns a severity. Find the existing record by ID and update its colour.",
+        "payload": {
+          "id": 42,
+          "severity": 1,
+          "label": "CRITICAL — Trapped",
+          "colour": "#FF0000",
+          "triaged_at": "2026-03-08T10:05:23.890Z"
+        },
+        "ajinkya_action": "Find the existing GeoJSON feature where properties.id === 42. Update properties.severity, properties.colour. Call map.getSource('sos-data').setData(updatedGeoJSON). Update severity counters in sidebar — decrement untriaged, increment critical."
+      },
+      "broadcast-alert": {
+        "description": "Fired when a threat is verified (confidence >= 0.85). This is the event that flips the dashboard banner RED.",
+        "payload": {
+          "alert_id": 7,
+          "type": "blast",
+          "confidence": 0.97,
+          "lat": 18.5204,
+          "lng": 73.8567,
+          "triggered_at": "2026-03-08T10:10:00.000Z"
+        },
+        "ajinkya_action": "Set alertActive = true in React state. Change top banner background to #C62828. Set banner text to: '⚠ EMERGENCY BROADCAST — BLAST DETECTED — Confidence: 97%'. Play browser alert sound. Add to recent alerts list."
+      }
+    }
+  },
+
+  "severity_reference": {
+    "1": {
+      "label": "CRITICAL — Trapped",
+      "colour": "#FF0000",
+      "heatmap_weight": 1.0,
+      "description": "Person trapped, buried, unconscious, or cannot move. Highest dispatch priority."
+    },
+    "2": {
+      "label": "URGENT — Medical",
+      "colour": "#FF8800",
+      "heatmap_weight": 0.6,
+      "description": "Injured, bleeding, or requires ambulance. High dispatch priority."
+    },
+    "3": {
+      "label": "STANDARD — Supplies",
+      "colour": "#FFFF00",
+      "heatmap_weight": 0.2,
+      "description": "Needs food, water, shelter, or non-critical help. Lower dispatch priority."
+    },
+    "null": {
+      "label": "Awaiting Triage",
+      "colour": "#888888",
+      "heatmap_weight": 0.1,
+      "description": "Received but AI triage not yet complete. Will update via 'triage-complete' WebSocket event within ~500ms."
+    }
+  },
+
+  "source_reference": {
+    "manual": "Citizen tapped SOS button in Flutter app",
+    "zero-touch": "Auto-triggered by accelerometer — device impact detected. No human input.",
+    "iot_node": "ESP32 hardware node or Python simulator. node_id field will be populated.",
+    "sonic_cascade": "Relayed from an offline phone via Sonic Cascade acoustic or BLE mesh"
+  },
+
+  "error_codes": {
+    "VALIDATION_FAILED": "Missing or invalid request field. Check the 'fields' array in the response.",
+    "NOT_FOUND": "Record with the given ID does not exist in the database.",
+    "DB_ERROR": "PostgreSQL query failed. Retry after 5 seconds.",
+    "AI_SERVICE_UNAVAILABLE": "Python FastAPI service on Render is not responding. A greedy fallback route may be included.",
+    "RATE_LIMITED": "Too many requests from this IP. Slow down polling interval."
+  },
+
+  "important_notes_for_ajinkya": [
+    "Mapbox coordinate order is [longitude, latitude] — the OPPOSITE of how they are stored in the database ([latitude, longitude]). Getting this backwards is silent — your markers will appear in the ocean. Double-check every coordinates array.",
+    "Do NOT update Mapbox layers by changing React state. Call map.getSource('sos-data').setData(newGeoJSON) directly on the Mapbox map object stored in a useRef.",
+    "The severity field on a fresh 'new-sos' WebSocket event is always null. Your UI must handle null gracefully — render a grey marker. It will update to a real colour within ~500ms via 'triage-complete'.",
+    "On page load: call GET /api/sos/heatmap to populate initial data, THEN open the WebSocket for live updates. Do not rely on WebSocket alone — it only sends new events, not history.",
+    "The route array from GET /api/routing/optimise is already in optimised order. Draw the Mapbox LineString exactly in the order the array comes back. Do not re-sort it."
+  ],
+
+  "important_notes_for_ajaya": [
+    "Store the backend URL in a single constants file. On Day 1 it will change at least twice: ngrok URL first, then Railway URL. One file to update, not twelve.",
+    "The hidden developer button (long-press on app title for 3 seconds) must fire the EXACT same POST request as a physical shake: {lat, lng, message:'AUTO-SOS: Device impact detected', source:'zero-touch', severity is NOT sent — it is assigned by AI}.",
+    "The metadata field in POST /api/sos is a free JSON object. If the surprise requirement asks for new fields (e.g. people_count, photo_url), put them in metadata. Do not add new top-level fields without telling Aryan.",
+    "Source field is an enum. Use EXACTLY these strings: 'manual', 'zero-touch', 'iot_node', 'sonic_cascade'. Any other string will fail validation.",
+    "node_id is only sent when source is 'iot_node'. Send null for all other sources — do not omit the field entirely."
+  ],
+
+  "redis_pubsub_contract": {
+    "_overview": "The Node.js backend publishes JSON-serialised strings into Redis channels. Shrinidhi's Python service subscribes to these channels in background threads. All messages are JSON strings — Python must call json.loads() on the raw message before reading any field. All timestamps are ISO 8601 UTC strings.",
+    "_connection": {
+      "host": "REPLACE_WITH_RAILWAY_REDIS_URL",
+      "note": "Railway Redis URL format: redis://default:<password>@<host>:<port>. Available as environment variable REDIS_URL in both the Node.js and Python containers automatically when Railway Redis add-on is connected to both services."
+    },
+
+    "channels": {
+
+      "sos-events": {
+        "direction": "Node.js PUBLISHES → Python SUBSCRIBES",
+        "trigger": "Fired by Node.js immediately after every successful write to the sos_reports table. Fired before the HTTP 201 response is sent to the caller.",
+        "purpose": "Python AI service reads this channel and runs severity triage on each message. After triage, Python calls PATCH /api/sos/:id/triage to write the result back.",
+        "message_structure": {
+          "id": "INTEGER — the sos_reports primary key. Python MUST include this in the triage callback so Node.js knows which record to update.",
+          "lat": "FLOAT — latitude of the SOS",
+          "lng": "FLOAT — longitude of the SOS",
+          "message": "STRING — the raw citizen message text. THIS IS THE FIELD the triage classifier runs NLP on.",
+          "source": "STRING — enum: 'manual' | 'zero-touch' | 'iot_node' | 'sonic_cascade'",
+          "node_id": "STRING or null — only populated when source is 'iot_node'",
+          "metadata": "OBJECT — free JSON. May contain people_count, battery_pct, or surprise requirement fields.",
+          "created_at": "ISO 8601 STRING — timestamp of when the record was saved to DB"
+        },
+        "example_message_published_by_nodejs": "{\"id\":42,\"lat\":18.5204,\"lng\":73.8567,\"message\":\"Building collapsed, 3 people trapped under debris\",\"source\":\"manual\",\"node_id\":null,\"metadata\":{\"people_count\":3},\"created_at\":\"2026-03-08T10:05:23.412Z\"}",
+        "python_consumption_pattern": "Subscribe to channel 'sos-events'. For each message: call json.loads(raw_message) to get a dict. Read dict['message'] for the text to classify. Read dict['id'] to use in the triage callback. Run triage classifier. POST result to /api/sos/{id}/triage.",
+        "latency_target": "Python must process each message and POST the triage callback within 500ms. This is the window between the 'new-sos' WebSocket event (grey marker) and the 'triage-complete' event (coloured marker). If triage takes longer, the grey marker sits on the dashboard for longer — acceptable but not ideal.",
+        "failure_behaviour": "If triage classifier throws an exception for a specific message, log the error and continue — do NOT crash the subscriber thread. A failed triage means the SOS record stays severity=null and renders as grey on the dashboard. That is acceptable. A crashed subscriber thread means ALL future SOS reports are never triaged. That is not acceptable.",
+        "zero_touch_note": "When source is 'zero-touch', the message text is always 'AUTO-SOS: Device impact detected'. The triage classifier will match this to severity 1 (CRITICAL) because it contains 'impact'. This is correct and expected — do not add a special case."
+      },
+
+      "alert-broadcast": {
+        "direction": "Node.js PUBLISHES → Python SUBSCRIBES (optional monitoring)",
+        "trigger": "Fired by Node.js after a confirmed broadcast (confidence >= 0.85) is saved to the alerts table.",
+        "purpose": "Optional. Python can subscribe to this channel to update internal state — e.g. set a cooldown flag so the social monitor does not re-trigger the same alert type within the next 3 minutes.",
+        "message_structure": {
+          "alert_id": "INTEGER — alerts table primary key",
+          "type": "STRING — threat type: 'earthquake' | 'flood' | 'blast' | 'fire' | 'stampede'",
+          "confidence": "FLOAT — the confidence score that triggered the broadcast",
+          "lat": "FLOAT",
+          "lng": "FLOAT",
+          "triggered_at": "ISO 8601 STRING"
+        },
+        "example_message_published_by_nodejs": "{\"alert_id\":7,\"type\":\"blast\",\"confidence\":0.97,\"lat\":18.5204,\"lng\":73.8567,\"triggered_at\":\"2026-03-08T10:10:00.000Z\"}",
+        "python_consumption_pattern": "Subscribe to channel 'alert-broadcast'. On receipt: set self.cooldown[threat_type] = True. Schedule reset to False after 180 seconds. This prevents the social monitor from firing the same alert type 6 times in a row during a demo."
+      },
+
+      "routing-request": {
+        "direction": "Node.js PUBLISHES → Python SUBSCRIBES (alternative to HTTP)",
+        "trigger": "ONLY used if the HTTP call from Node.js to Python /routing/optimise is timing out. Fallback communication path.",
+        "purpose": "Node.js pushes TSP routing requests into this channel if the AI service HTTP endpoint is not responding. Python processes and pushes the result back to 'routing-response' channel.",
+        "note": "Prefer the direct HTTP path (GET /api/routing/optimise → POST to Python). Only implement this Redis fallback if HTTP is unreliable during testing.",
+        "message_structure": {
+          "request_id": "STRING — UUID generated by Node.js to match request to response",
+          "depot": { "lat": "FLOAT", "lng": "FLOAT", "ambulance_id": "INTEGER" },
+          "waypoints": [{ "id": "INTEGER", "lat": "FLOAT", "lng": "FLOAT", "severity": "INTEGER" }],
+          "waypoint_count_cap": "INTEGER — always 15 or fewer. Node.js enforces this before publishing."
+        },
+        "example_message_published_by_nodejs": "{\"request_id\":\"f4a2b1c3-...\",\"depot\":{\"lat\":18.515,\"lng\":73.85,\"ambulance_id\":1},\"waypoints\":[{\"id\":42,\"lat\":18.5204,\"lng\":73.8567,\"severity\":1},{\"id\":41,\"lat\":18.5314,\"lng\":73.8446,\"severity\":1}],\"waypoint_count_cap\":15}"
+      },
+
+      "routing-response": {
+        "direction": "Python PUBLISHES → Node.js SUBSCRIBES (alternative to HTTP)",
+        "trigger": "Python publishes here after TSP solver completes, only when routing-request Redis path is being used instead of HTTP.",
+        "message_structure": {
+          "request_id": "STRING — must match the request_id from the routing-request message exactly",
+          "route": [{ "id": "INTEGER", "lat": "FLOAT", "lng": "FLOAT", "severity": "INTEGER", "stop": "INTEGER", "distance_from_prev_m": "INTEGER" }],
+          "stops": "INTEGER",
+          "solver_used": "STRING — 'or-tools' or 'greedy-fallback'",
+          "computed_at": "ISO 8601 STRING"
+        },
+        "example_message_published_by_python": "{\"request_id\":\"f4a2b1c3-...\",\"route\":[{\"id\":42,\"lat\":18.5204,\"lng\":73.8567,\"severity\":1,\"stop\":1,\"distance_from_prev_m\":0}],\"stops\":1,\"solver_used\":\"or-tools\",\"computed_at\":\"2026-03-08T10:15:01.000Z\"}"
+      }
+    }
+  },
+
+  "important_notes_for_shrinidhi": [
+    "Your Python service has TWO communication directions with the backend. INBOUND: subscribe to Redis channel 'sos-events' to receive new SOS reports for triage. OUTBOUND: POST to /api/sos/:id/triage (HTTP) to send triage results back. Never confuse these two directions.",
+
+    "The id field in every Redis 'sos-events' message is the PostgreSQL primary key. You MUST include this exact integer in your triage callback URL: PATCH /api/sos/{id}/triage. If you omit it or send the wrong id, Aryan's backend updates the wrong record or returns 404 and the SOS stays grey on the dashboard forever.",
+
+    "All Redis messages arrive as raw JSON strings. Always call json.loads(message) before accessing any field. Never assume the message is already a dict.",
+
+    "The triage classifier must NEVER crash the subscriber thread. Wrap every message handler in try/except. Log the exception. Continue to the next message. A crashed thread means every SOS from that point forward is untriaged — a silent pipeline failure that is very hard to detect mid-demo.",
+
+    "The social media background monitor must have a per-threat-type cooldown of 3 minutes after firing an alert. Without this, the same 'blast' threat fires every 30 seconds during the demo, spamming the broadcast history panel and making the system look broken. Subscribe to the Redis 'alert-broadcast' channel to set this cooldown flag automatically when a broadcast fires.",
+
+    "TSP HARD RULE: The /routing/optimise endpoint must reject any request where the waypoints array contains more than 15 items. Return HTTP 400 with code 'TOO_MANY_WAYPOINTS' and message 'Maximum 15 waypoints allowed. Received: {n}'. Aryan's backend enforces LIMIT 15 in the SQL query, but this is your safety net in case that query ever changes.",
+
+    "OR-Tools solver MUST have a hard time limit of 3 seconds. Set params.time_limit.seconds = 3. If no solution is found in 3 seconds, return whatever partial solution exists. If no partial solution exists either, activate the nearest-neighbour greedy fallback and set solver_used to 'greedy-fallback' in the response. Never let the solver run unbounded — it will block the FastAPI process and freeze all incoming triage requests.",
+
+    "The /triage endpoint will be called concurrently when multiple SOS reports arrive in a burst. Use FastAPI async def endpoints (not regular def) so requests are handled concurrently, not queued sequentially. A synchronous endpoint will process one triage at a time — during a simulated earthquake with 6 nodes firing simultaneously, that creates a 3-second backlog.",
+
+    "Keep the AI service warm: Node.js pings your /health endpoint every 5 minutes. Render free tier spins down after 15 minutes of inactivity. If /health returns a cold-start 30-second delay, the first SOS after a quiet period will have a 30-second triage lag. The keep-warm pings prevent this — verify they are firing in the Railway logs.",
+
+    "When source is 'zero-touch', the message text is always 'AUTO-SOS: Device impact detected'. Do not add a special case for this — let the triage classifier handle it normally. The word 'impact' maps to severity 1. This is correct.",
+
+    "The metadata JSONB field in the Redis message is a free object. If the surprise requirement adds people_count or battery_pct, they arrive here. Your triage logic can optionally read metadata.people_count to boost severity (e.g. if people_count > 5, force severity 1 regardless of message text). Coordinate with Aryan if you add this logic.",
+
+    "Your FastAPI service URL goes into Aryan's backend as an environment variable AI_SERVICE_URL. Aryan calls your endpoints. You call Aryan's endpoints. Neither of you hardcodes the other's URL in source code — it always comes from environment variables."
+  ]
+}
