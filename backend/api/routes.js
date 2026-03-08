@@ -4,10 +4,9 @@ const router = express.Router();
 const sosHandler = require('./handlers/sos');
 const alertHandler = require('./handlers/alert');
 const routingHandler = require('./handlers/routing');
-const healthHandler = require('./handlers/health');
 
-// Health check
-router.use('/health', healthHandler);
+// NOTE: /health is mounted at root level in server.js, NOT here.
+// This router is strictly for /api/* prefixed routes.
 
 // SOS endpoints
 router.use('/sos', sosHandler);

@@ -15,7 +15,10 @@ const server = http.createServer(app);
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Mount all routes
+// ── Root-level routes (not prefixed with /api) ──────────────
+// Health check will be mounted here in Prompt 5: app.get('/health', ...)
+
+// ── API routes (prefixed with /api) ─────────────────────────
 app.use('/api', routes);
 
 const PORT = process.env.PORT || 3001;
