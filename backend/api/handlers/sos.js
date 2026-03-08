@@ -86,10 +86,19 @@ router.post('/', async (req, res) => {
             console.error('Redis publish failed (non-fatal):', redisErr.message);
         }
 
-        // ── WebSocket Emit ──────────────────────────────────────
+        // ── Emit WebSocket Event ────────────────────────────────────
         try {
-            const { io } = require('../../server');
-            io.emit('new-sos', { ...saved, colour: '#888888' });
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('new-sos', {
+                id: saved.id,
+                lat: saved.lat,
+                lng: saved.lng,
+                message: saved.message,
+                source: saved.source,
+                severity: null,
+                colour: '#888888',
+                created_at: saved.created_at,
+            });
         } catch (wsErr) {
             console.error('WebSocket emit failed (non-fatal):', wsErr.message);
         }
@@ -282,10 +291,10 @@ router.patch('/:id/triage', async (req, res) => {
 
         const updated = result.rows[0];
 
-        // ── WebSocket Emit ──────────────────────────────────────
+        // ── Emit WebSocket Event ────────────────────────────────────
         try {
-            const { io } = require('../../server');
-            io.emit('triage-complete', {
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('triage-complete', {
                 id: updated.id,
                 severity: updated.severity,
                 label: updated.label,

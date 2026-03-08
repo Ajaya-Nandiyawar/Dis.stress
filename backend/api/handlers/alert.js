@@ -100,8 +100,8 @@ router.post('/trigger', async (req, res) => {
 
         // STEP 4 — Emit WebSocket 'broadcast-alert' event
         try {
-            const { io } = require('../../server');
-            io.emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at });
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at });
         } catch (wsErr) {
             console.error('WebSocket emit failed (non-fatal):', wsErr.message);
         }
