@@ -6,6 +6,7 @@ const http = require('http');
 const routes = require('./api/routes');
 const { connectDB } = require('./db/pool');
 const { connectPublisher } = require('./redis/publisher');
+const { connectSubscriber } = require('./redis/subscriber');
 
 const app = express();
 const server = http.createServer(app);
@@ -29,7 +30,12 @@ const PORT = process.env.PORT || 3001;
   try {
     await connectPublisher();
   } catch (err) {
-    console.error('Failed to connect to Redis — server starting without Pub/Sub');
+    console.error('Failed to connect to Redis Publisher — server starting without Pub/Sub outbound');
+  }
+  try {
+    await connectSubscriber();
+  } catch (err) {
+    console.error('Failed to connect to Redis Subscriber — server starting without Pub/Sub inbound');
   }
   server.listen(PORT, () => {
     console.log(`Backend running on port ${PORT}`);
