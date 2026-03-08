@@ -1,8 +1,16 @@
 const { Pool } = require('pg');
 
+let dbUrl = process.env.DATABASE_URL;
+if (process.env.NODE_ENV === 'production' && dbUrl) {
+    dbUrl = dbUrl.replace('?sslmode=require', '');
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: dbUrl,
     max: 10,
+    ...(process.env.NODE_ENV === 'production' && {
+        ssl: { rejectUnauthorized: false }
+    })
 });
 
 // Log unexpected errors on idle clients
