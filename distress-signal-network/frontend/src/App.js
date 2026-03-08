@@ -14,6 +14,8 @@ import Sidebar from './components/Sidebar';
 import { getOptimisedRoute } from './api/routing';
 import { getSosStats } from './api/sos';
 import { getRecentAlerts } from './api/alerts';
+import ManualAlertModal from './components/ManualAlertModal';
+import { useDisclosure } from '@mantine/hooks';
 
 function App() {
   const [stats, setStats] = useState({
@@ -27,9 +29,15 @@ function App() {
   const [routingData, setRoutingData] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [cascadeVisible, setCascadeVisible] = useState(false);
+  const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   // Fetch initial stats and alerts on mount
   useEffect(() => {
+    // Request Native Notification Permission
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+
     Promise.all([getSosStats(), getRecentAlerts(10)])
       .then(([statsData, alertsData]) => {
         if (statsData) setStats(statsData);
@@ -54,6 +62,20 @@ function App() {
   const handleBroadcastAlert = (data) => {
     setAlertActive(true);
     setAlertData(data);
+
+    // Trigger Native OS Notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const threatType = (data?.threat_type || data?.type || 'UNKNOWN').toUpperCase();
+      const msgTemplate = data?.metadata?.template;
+      let bodyText = `Confidence: ${Math.round((data?.confidence || 0) * 100)}%`;
+      if (msgTemplate) bodyText += `\nInstructions: ${msgTemplate}`;
+
+      new Notification(`⚠ CRITICAL ALERT: ${threatType} DETECTED`, {
+        body: bodyText,
+        icon: '/favicon.ico' // Or any relevant alert icon
+      });
+    }
+
     // Prepend to recent alerts list
     setRecentAlerts(prev => [data, ...prev].slice(0, 20));
     setTimeout(() => {
@@ -61,6 +83,7 @@ function App() {
       setAlertData(null);
     }, 5 * 60 * 1000);
   };
+
 
   const handleNewSos = () => {
     setStats(prev => ({
@@ -89,7 +112,7 @@ function App() {
   return (
     <AppShell
       padding={0}
-      header={{ height: alertActive ? 60 : 40 }}
+      header={{ height: alertActive ? 90 : 70 }}
       navbar={{ width: 320, breakpoint: 'sm' }}
     >
       <AppShell.Header>
@@ -106,6 +129,7 @@ function App() {
           recentAlerts={recentAlerts}
           cascadeVisible={cascadeVisible}
           setCascadeVisible={setCascadeVisible}
+          onOpenManualAlert={openModal}
         />
       </AppShell.Navbar>
 
@@ -119,6 +143,12 @@ function App() {
           cascadeVisible={cascadeVisible}
         />
       </AppShell.Main>
+
+      <ManualAlertModal
+        opened={modalOpened}
+        onClose={closeModal}
+        onAlertTriggered={handleBroadcastAlert}
+      />
     </AppShell>
   );
 }

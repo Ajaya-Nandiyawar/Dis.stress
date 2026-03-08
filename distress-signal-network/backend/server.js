@@ -49,3 +49,4 @@ const PORT = process.env.PORT || 3001;
 })();
 
 module.exports = { app, server, io };
+// Triggering nodemon restart for Telegram bot .env changes
