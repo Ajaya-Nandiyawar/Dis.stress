@@ -5,6 +5,7 @@ const http = require('http');
 
 const routes = require('./api/routes');
 const { connectDB } = require('./db/pool');
+const { connectPublisher } = require('./redis/publisher');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,12 +19,17 @@ app.use('/api', routes);
 
 const PORT = process.env.PORT || 3001;
 
-// Verify DB connection, then start listening
+// Verify DB and Redis connections, then start listening
 (async () => {
   try {
     await connectDB();
   } catch (err) {
     console.error('Failed to connect to PostgreSQL — server starting without DB');
+  }
+  try {
+    await connectPublisher();
+  } catch (err) {
+    console.error('Failed to connect to Redis — server starting without Pub/Sub');
   }
   server.listen(PORT, () => {
     console.log(`Backend running on port ${PORT}`);
