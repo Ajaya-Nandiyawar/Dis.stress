@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import io from 'socket.io-client';
-import { CONFIG } from '../constants/config';
+import { BACKEND_URL } from '../constants/config';
 
 export const useWebSocket = (onNewSOS, onTriageComplete, onBroadcastAlert) => {
     const socketRef = useRef(null);
 
     useEffect(() => {
-        const socket = io(CONFIG.BACKEND_URL);
+        const socket = io(BACKEND_URL);
         socketRef.current = socket;
 
         socket.on('connect', () => {
