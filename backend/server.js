@@ -4,6 +4,7 @@ const cors = require('cors');
 const http = require('http');
 
 const routes = require('./api/routes');
+const { connectDB } = require('./db/pool');
 
 const app = express();
 const server = http.createServer(app);
@@ -17,8 +18,16 @@ app.use('/api', routes);
 
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+// Verify DB connection, then start listening
+(async () => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('Failed to connect to PostgreSQL — server starting without DB');
+  }
+  server.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+})();
 
 module.exports = { app, server };
