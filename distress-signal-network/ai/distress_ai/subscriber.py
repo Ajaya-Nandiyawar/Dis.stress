@@ -32,20 +32,34 @@ _stop_event = threading.Event()
 # ── Message handler ─────────────────────────────────────
 
 def _handle_message(raw: str, loop: asyncio.AbstractEventLoop) -> None:
-    """Parse a raw JSON message, classify it, and patch the result back."""
+    """
+    Parse a raw JSON string from Redis, validate it against SOSReport,
+    run the triage classifier, and schedule the outbound PATCH.
+
+    IMPORTANT: ``raw`` is always a plain string — never assume it is
+    already a dict.  Always call ``json.loads`` first.
+    """
     try:
         data = json.loads(raw)
         report = SOSReport(**data)
-        logger.info("[IN]  SOS received  id=%s  msg=%s", report.id, report.message[:80])
+        logger.info(
+            "[IN]  SOS id=%d  source=%s  lat=%.4f  lng=%.4f  msg=%s",
+            report.id, report.source.value,
+            report.lat, report.lng,
+            report.message[:80],
+        )
 
         result = classify(report)
         logger.info(
-            "[TRIAGE]  id=%s  severity=%s  confidence=%.2f",
-            report.id, result.severity.value, result.confidence,
+            "[TRIAGE]  id=%d  severity=%s  confidence=%.2f  tags=%s",
+            report.id, result.severity.value, result.confidence, result.tags,
         )
 
-        # Schedule the async outbound call on the main event loop
-        asyncio.run_coroutine_threadsafe(patch_triage(report.id, result), loop)
+        # Schedule the async outbound call on the main event loop.
+        # patch_triage needs the id as an int for the URL path param.
+        asyncio.run_coroutine_threadsafe(
+            patch_triage(report.id, result), loop
+        )
 
     except json.JSONDecodeError:
         logger.error("[FAIL]  Invalid JSON on %s: %s", _CHANNEL, raw[:200])

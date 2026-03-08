@@ -50,7 +50,7 @@ async def _request_with_retries(
 
 # ── Public helpers ──────────────────────────────────────
 
-async def patch_triage(sos_id: str, result: TriageResult) -> bool:
+async def patch_triage(sos_id: int, result: TriageResult) -> bool:
     """
     PATCH /api/sos/{id}/triage on the Node.js backend.
     Returns True if the backend accepted the request.

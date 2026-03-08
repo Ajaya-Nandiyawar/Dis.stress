@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,15 +20,34 @@ class Severity(str, Enum):
     LOW = "LOW"
 
 
+# ── SOS Source Enum ─────────────────────────────────────
+
+class SOSSource(str, Enum):
+    MANUAL = "manual"
+    ZERO_TOUCH = "zero-touch"
+    IOT_NODE = "iot_node"
+    SONIC_CASCADE = "sonic_cascade"
+
+
 # ── Inbound: SOS Report from Redis ─────────────────────
 
 class SOSReport(BaseModel):
-    """Schema of the JSON published by Node.js on the 'sos-events' channel."""
-    id: str
-    message: str
-    location: Optional[str] = None
-    timestamp: Optional[str] = None
-    userId: Optional[str] = None
+    """
+    Schema of the raw JSON published by Node.js on the 'sos-events'
+    channel.  Node.js publishes BEFORE sending the HTTP 201 response.
+
+    The ``message`` field is the raw citizen text that the NLP
+    classifier runs on.  ``id`` is the PostgreSQL PK required in the
+    PATCH callback URL.
+    """
+    id: int                                          # PG primary key
+    lat: float                                       # latitude
+    lng: float                                       # longitude
+    message: str                                     # raw citizen text → NLP input
+    source: SOSSource                                # origin of the report
+    node_id: Optional[str] = None                    # only when source == 'iot_node'
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # free JSON
+    created_at: str                                  # ISO 8601 timestamp
 
 
 # ── Triage Result ───────────────────────────────────────
