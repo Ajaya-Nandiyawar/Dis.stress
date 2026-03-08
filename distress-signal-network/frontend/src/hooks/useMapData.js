@@ -1,5 +1,4 @@
 import { useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
 
 export const useMapData = (mapRef) => {
     const geoJsonRef = useRef({
@@ -27,12 +26,12 @@ export const useMapData = (mapRef) => {
     const initMapSources = () => {
         if (!mapRef.current) return;
 
+        // ── SOS data source ────────────────────────────────────
         mapRef.current.addSource('sos-data', {
             type: 'geojson',
             data: geoJsonRef.current
         });
 
-        // Add Heatmap Layer
         mapRef.current.addLayer({
             id: 'sos-heatmap',
             type: 'heatmap',
@@ -54,7 +53,6 @@ export const useMapData = (mapRef) => {
             }
         });
 
-        // Add Circle Layer
         mapRef.current.addLayer({
             id: 'sos-circles',
             type: 'circle',
@@ -65,6 +63,56 @@ export const useMapData = (mapRef) => {
                 'circle-stroke-width': 2,
                 'circle-stroke-color': '#FFFFFF',
                 'circle-opacity': 0.9
+            }
+        });
+
+        // ── Route data source ──────────────────────────────────
+        mapRef.current.addSource('route-data', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+        });
+
+        // 1. The blue route line
+        mapRef.current.addLayer({
+            id: 'route-line',
+            type: 'line',
+            source: 'route-data',
+            filter: ['==', '$type', 'LineString'],
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+                'line-color': '#0288D1',
+                'line-width': 4,
+                'line-opacity': 0.85
+            }
+        });
+
+        // 2. Circle background for stops
+        mapRef.current.addLayer({
+            id: 'route-stops-bg',
+            type: 'circle',
+            source: 'route-data',
+            filter: ['==', '$type', 'Point'],
+            paint: {
+                'circle-radius': 12,
+                'circle-color': '#0288D1',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#FFFFFF'
+            }
+        });
+
+        // 3. Text numbers inside circles
+        mapRef.current.addLayer({
+            id: 'route-stops-text',
+            type: 'symbol',
+            source: 'route-data',
+            filter: ['==', '$type', 'Point'],
+            layout: {
+                'text-field': ['get', 'stop'],
+                'text-size': 14,
+                'text-allow-overlap': true
+            },
+            paint: {
+                'text-color': '#FFFFFF'
             }
         });
     };
@@ -109,5 +157,38 @@ export const useMapData = (mapRef) => {
         }
     };
 
-    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint };
+    const drawRoute = (routeData) => {
+        if (!mapRef.current || !mapRef.current.getSource('route-data')) return;
+
+        // If empty route or no depot, clear the map
+        if (!routeData || !routeData.route || routeData.route.length === 0 || !routeData.depot) {
+            mapRef.current.getSource('route-data').setData({ type: 'FeatureCollection', features: [] });
+            return;
+        }
+
+        const features = [];
+
+        // Create LineString Feature
+        const lineCoords = [
+            [routeData.depot.lng, routeData.depot.lat], // Start at depot
+            ...routeData.route.map(s => [s.lng, s.lat])  // Connect to all stops
+        ];
+        features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: lineCoords }
+        });
+
+        // Create Point Features for numbered markers
+        routeData.route.forEach(stop => {
+            features.push({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [stop.lng, stop.lat] },
+                properties: { stop: stop.stop, label: stop.label, colour: stop.colour }
+            });
+        });
+
+        mapRef.current.getSource('route-data').setData({ type: 'FeatureCollection', features });
+    };
+
+    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute };
 };

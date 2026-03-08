@@ -8,7 +8,7 @@ export default function AlertBanner({ alertActive, alertData }) {
             icon={alertActive ? <AlertTriangle size={24} /> : <ShieldCheck size={24} />}
             color={alertActive ? 'red' : 'green'}
             title={alertActive
-                ? `⚠ EMERGENCY BROADCAST — ${alertData?.type?.toUpperCase()} DETECTED`
+                ? `⚠ EMERGENCY BROADCAST — ${(alertData?.threat_type || alertData?.type || 'UNKNOWN').toUpperCase()} DETECTED`
                 : '✅ SYSTEM MONITORING — All channels clear'
             }
             radius={0}
