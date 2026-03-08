@@ -1,3 +1,11 @@
+/*
+  DEPLOYMENT CHECKLIST:
+  1. Generate local build: cd frontend && npm run build
+  2. Serve locally to test: npx serve -s build -l 4000
+  3. Verify no mixed-content (HTTP/HTTPS) or CORS errors in the browser console.
+  4. Push to GitHub and import to Vercel.
+  5. Add Environment Variables in Vercel Dashboard BEFORE deploying.
+*/
 import { useState, useEffect } from 'react';
 import { AppShell } from '@mantine/core';
 import MapView from './components/MapView';
