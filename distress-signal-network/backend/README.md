@@ -4,59 +4,77 @@ This is the high-performance Node.js backend for the **Distress Signal Network**
 
 ---
 
-## 🛠️ Quick Start (Local Development)
+## 🛠️ Setup Instructions
 
-### 1. Start the Backend Server
-```bash
-# From the backend directory
-npm run dev
-```
-*Port: `3001`*
+### 1. Prerequisites
+- **Node.js**: v20 or higher![alt text](image.png)
+- **PostgreSQL**: Local or Railway managed
+- **Redis**: Local or Railway managed
 
-### 2. Start the External Tunnel (Ngrok)
-To allow the frontend and mobile devices to reach your local server:
+### 2. Environment Configuration
+The backend requires several environment variables to function correctly. **Never commit your `.env` file.**
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+2. Open `.env` and fill in your actual credentials (database URL, Redis URL, etc.).
+
+### 3. Install Dependencies
 ```bash
-ngrok http 3001
+npm install
 ```
-*Copy the `https://xxxx.ngrok-free.app` URL and share it with the team.*
 
 ---
 
-## 🧪 Demo & Testing Commands
+## 🚀 Running the Server
 
-### Data Seeding (Pune Earthquake Scenario)
+### Local Development
+Starts the server with `nodemon` for automatic reloading on code changes:
+```bash
+npm run dev
+```
+*Default Port: `3001`*
+
+### Exposing to the Internet (Ngrok)
+To allow the frontend and mobile devices to reach your local server, start a tunnel:
+```bash
+ngrok http 3001
+```
+*Get your public URL from the ngrok interface (e.g., `https://xxxx.ngrok-free.app`).*
+
+### Production Start
+```bash
+npm start
+```
+
+---
+
+## 🧪 Database & Demo Commands
+
+### Run Migrations
+Creates the necessary tables (`sos_reports`, `alerts`, `resources`) in your database.
+```bash
+npm run migrate
+```
+
+### Seed Demo Data (Pune Earthquake)
 Wipes existing demo data and inserts 25 geofenced SOS reports clustered around Pune.
 ```bash
 npm run seed
 ```
 
-### Database Migrations
-Ensures the local or Railway PostgreSQL schema is up-to-date.
-```bash
-npm run migrate
-```
-
 ---
 
-## 🚀 Deployment (Railway)
-
-### Deploy to Production
-```bash
-# Commits, pushes, and triggers Railway build
-bash deploy.sh
-```
-
----
-
-## 🛰️ Core API Endpoints
+## 🛰️ API Quick Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/health` | System health & DB/Redis status |
+| `GET` | `/health` | System health & DB/Redis connectivity |
 | `POST` | `/api/sos` | Ingest new SOS distress signal |
-| `GET` | `/api/sos/heatmap` | Fetch all active SOS coordinates |
+| `GET` | `/api/sos/heatmap` | Get all active SOS coordinates |
 | `POST` | `/api/alert/trigger` | Trigger NLP-confirmed emergency broadcast |
-| `GET` | `/api/alerts/recent` | Fetch history of confirmed threats |
+| `GET` | `/api/alerts/recent` | History of confirmed threats |
 
 ---
 
@@ -64,9 +82,9 @@ bash deploy.sh
 
 | Event | Direction | Payload |
 | :--- | :--- | :--- |
-| `new-sos` | Server -> Client | New incoming SOS data |
-| `triage-complete` | Server -> Client | Updated severity for SOS |
-| `broadcast-alert` | Server -> Client | High-confidence emergency alert |
+| `new-sos` | Server -> Client | Data for a new incoming SOS |
+| `triage-complete` | Server -> Client | Updated severity levels |
+| `broadcast-alert` | Server -> Client | High-confidence emergency alerts |
 
 ---
 
