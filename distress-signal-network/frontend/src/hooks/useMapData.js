@@ -1,4 +1,14 @@
 import { useRef } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { BACKEND_URL, MAPBOX_TOKEN } from '../constants/config';
+
+const DEMO_RESOURCES = [
+    { name: "Deenanath Mangeshkar Hospital", resource_type: "shelter", lat: 18.5019, lng: 73.8321 },
+    { name: "Ruby Hall Clinic", resource_type: "shelter", lat: 18.5334, lng: 73.8772 },
+    { name: "Sassoon General Hospital", resource_type: "depot", lat: 18.5284, lng: 73.8735 },
+    { name: "YCM Hospital (Pimpri)", resource_type: "shelter", lat: 18.6186, lng: 73.8152 },
+    { name: "Aditya Birla Hospital", resource_type: "depot", lat: 18.6272, lng: 73.7738 }
+];
 
 export const useMapData = (mapRef) => {
     const geoJsonRef = useRef({
@@ -152,6 +162,50 @@ export const useMapData = (mapRef) => {
                 'fill-color': '#FF0000',
                 'fill-opacity': 0.25,
                 'fill-outline-color': '#FF0000'
+            }
+        });
+
+        // ── Traffic Source (Part A) ───────────────────────────
+        if (!mapRef.current.getSource('traffic-src')) {
+            mapRef.current.addSource('traffic-src', {
+                type: 'vector',
+                url: 'mapbox://mapbox.mapbox-traffic-v1'
+            });
+            mapRef.current.addLayer({
+                id: 'traffic',
+                type: 'line',
+                source: 'traffic-src',
+                'source-layer': 'traffic',
+                layout: { visibility: 'none' },
+                paint: {
+                    'line-width': 2,
+                    'line-color': [
+                        'match',
+                        ['get', 'congestion'],
+                        'low', '#00C853',
+                        'moderate', '#FFA726',
+                        'heavy', '#EF5350',
+                        'severe', '#B71C1C',
+                        '#888'
+                    ]
+                }
+            });
+        }
+
+        // ── Evacuation Source (Part B) ──────────────────────────
+        mapRef.current.addSource('evac-data', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+        });
+        mapRef.current.addLayer({
+            id: 'evac-route',
+            type: 'line',
+            source: 'evac-data',
+            layout: { visibility: 'none' },
+            paint: {
+                'line-color': '#00E676',
+                'line-width': 4,
+                'line-dasharray': [2, 2]
             }
         });
     };
@@ -308,5 +362,59 @@ export const useMapData = (mapRef) => {
         mapRef.current.flyTo({ center: [lng, lat], zoom: 13, speed: 1.2 });
     };
 
-    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone };
+    const loadResources = async (map) => {
+        const colourMap = { shelter: '#00BCD4', depot: '#9C27B0', ambulance: '#1565C0' };
+
+        DEMO_RESOURCES.forEach(r => {
+            const color = colourMap[r.resource_type] || '#1565C0';
+            new mapboxgl.Marker({ color })
+                .setLngLat([r.lng, r.lat]) // Longitude FIRST
+                .setPopup(new mapboxgl.Popup().setHTML(`<b>${r.resource_type.toUpperCase()}</b><br/>${r.name}`))
+                .addTo(map);
+        });
+
+        console.log(`Loaded ${DEMO_RESOURCES.length} demo resource markers onto map`);
+    };
+
+
+
+    const drawEvacuation = async (sosRecords) => {
+        if (!mapRef.current) return;
+        const critical = sosRecords.filter(s => s.severity === 1 || s.severity === 'CRITICAL');
+        if (!critical.length) {
+            mapRef.current.getSource('evac-data')?.setData({ type: 'FeatureCollection', features: [] });
+            return;
+        }
+
+        // 1. Start exactly at the highest priority critical marker
+        const startPoint = critical[0];
+
+        // 2. Find the nearest actual shelter from our resource list
+        const shelters = DEMO_RESOURCES.filter(r => r.resource_type === 'shelter');
+        const nearestShelter = shelters.reduce((closest, current) => {
+            const distCurrent = Math.hypot(current.lat - startPoint.lat, current.lng - startPoint.lng);
+            const distClosest = Math.hypot(closest.lat - startPoint.lat, closest.lng - startPoint.lng);
+            return distCurrent < distClosest ? current : closest;
+        });
+
+        // 3. Request Mapbox Directions (Longitude FIRST: lng,lat;lng,lat)
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${startPoint.lng},${startPoint.lat};${nearestShelter.lng},${nearestShelter.lat}?geometries=geojson&access_token=${MAPBOX_TOKEN}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            const geo = data.routes[0]?.geometry;
+
+            if (geo && mapRef.current.getSource('evac-data')) {
+                mapRef.current.getSource('evac-data').setData({
+                    type: 'FeatureCollection',
+                    features: [{ type: 'Feature', geometry: geo, properties: {} }]
+                });
+            }
+        } catch (err) {
+            console.error("Failed to fetch evacuation route", err);
+        }
+    };
+
+    return { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone, loadResources, drawEvacuation };
 };

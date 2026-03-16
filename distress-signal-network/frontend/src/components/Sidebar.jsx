@@ -5,7 +5,22 @@ import SeverityCounter from './SeverityCounter';
 import RoutingPanel from './RoutingPanel';
 import AlertHistory from './AlertHistory';
 
-export default function Sidebar({ connected, stats, routeLoading, handleOptimiseRoute, routingData, recentAlerts, cascadeVisible, setCascadeVisible, onOpenManualAlert, citizenStats }) {
+export default function Sidebar({
+    connected,
+    stats,
+    routeLoading,
+    handleOptimiseRoute,
+    routingData,
+    recentAlerts,
+    cascadeVisible,
+    setCascadeVisible,
+    onOpenManualAlert,
+    citizenStats,
+    trafficVisible,
+    setTrafficVisible,
+    evacuationVisible,
+    setEvacuationVisible
+}) {
     const sev = stats?.by_severity || { critical: 0, urgent: 0, standard: 0, untriaged: 0 };
     const total = sev.critical + sev.urgent + sev.standard + sev.untriaged;
 
@@ -63,6 +78,21 @@ export default function Sidebar({ connected, stats, routeLoading, handleOptimise
                         size="xs"
                     />
                 </Group>
+
+                <Stack gap="xs">
+                    <Switch
+                        label="Live Traffic"
+                        checked={trafficVisible}
+                        onChange={(e) => setTrafficVisible(e.currentTarget.checked)}
+                        size="xs"
+                    />
+                    <Switch
+                        label="Evacuation Route"
+                        checked={evacuationVisible}
+                        onChange={(e) => setEvacuationVisible(e.currentTarget.checked)}
+                        size="xs"
+                    />
+                </Stack>
                 <Box style={{ flexShrink: 0 }}>
                     <Button
                         color="red"

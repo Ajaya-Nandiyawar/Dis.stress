@@ -12,7 +12,7 @@ export default function AlertHistory({ alerts }) {
     return (
         <Stack gap="xs">
             {alerts.map((alert, i) => (
-                <Paper key={alert.id || alert.alert_id || i} p="xs" radius="sm" bg="dark.6">
+                <Paper key={alert.instance_key || alert.id || alert.alert_id || i} p="xs" radius="sm" bg="dark.6">
                     <Group justify="space-between" wrap="nowrap">
                         <Group gap="xs" wrap="nowrap">
                             <AlertTriangle size={12} color="#fa5252" />

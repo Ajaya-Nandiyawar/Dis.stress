@@ -29,6 +29,8 @@ function App() {
   const [routingData, setRoutingData] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [cascadeVisible, setCascadeVisible] = useState(false);
+  const [trafficVisible, setTrafficVisible] = useState(false);
+  const [evacuationVisible, setEvacuationVisible] = useState(false);
   const [citizenStats, setCitizenStats] = useState({ safe: 0, need_rescue: 0, medical: 0 });
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
@@ -42,7 +44,11 @@ function App() {
     Promise.all([getSosStats(), getRecentAlerts(10)])
       .then(([statsData, alertsData]) => {
         if (statsData) setStats(statsData);
-        if (alertsData) setRecentAlerts(alertsData);
+        if (alertsData) {
+          // Add unique instance keys to initial alerts
+          const keyedAlerts = alertsData.map((a, i) => ({ ...a, instance_key: `init-${a.id}-${i}-${Date.now()}` }));
+          setRecentAlerts(keyedAlerts);
+        }
       })
       .catch(err => console.error('Failed to fetch initial sidebar data:', err));
   }, []);
@@ -77,8 +83,9 @@ function App() {
       });
     }
 
-    // Prepend to recent alerts list
-    setRecentAlerts(prev => [data, ...prev].slice(0, 20));
+    // Prepend to recent alerts list with a unique instance key
+    const keyedAlert = { ...data, instance_key: `ws-${data.alert_id || data.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` };
+    setRecentAlerts(prev => [keyedAlert, ...prev].slice(0, 20));
     setTimeout(() => {
       setAlertActive(false);
       setAlertData(null);
@@ -135,6 +142,10 @@ function App() {
           setCascadeVisible={setCascadeVisible}
           onOpenManualAlert={openModal}
           citizenStats={citizenStats}
+          trafficVisible={trafficVisible}
+          setTrafficVisible={setTrafficVisible}
+          evacuationVisible={evacuationVisible}
+          setEvacuationVisible={setEvacuationVisible}
         />
       </AppShell.Navbar>
 
@@ -147,6 +158,8 @@ function App() {
           onCitizenStatus={handleCitizenStatus}
           routingData={routingData}
           cascadeVisible={cascadeVisible}
+          trafficVisible={trafficVisible}
+          evacuationVisible={evacuationVisible}
         />
       </AppShell.Main>
 
