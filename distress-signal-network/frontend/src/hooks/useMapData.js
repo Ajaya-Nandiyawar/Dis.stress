@@ -175,6 +175,10 @@ export const useMapData = (mapRef) => {
         if (source) {
             source.setData(geoJsonRef.current);
         }
+
+        if (mapRef.current && record.lng !== undefined && record.lat !== undefined) {
+            mapRef.current.flyTo({ center: [record.lng, record.lat], zoom: 14, speed: 1.2 });
+        }
     };
 
     const updateSosPoint = (triagePayload) => {
