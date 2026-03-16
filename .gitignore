@@ -44,4 +44,10 @@ distress-signal-network/backend/package-lock.json
 distress-signal-network/frontend/node_modules/
 distress-signal-network/frontend/build/
 distress-signal-network/frontend/.env
-distress-signal-network/frontend/package-lock.json
+# Firebase Secrets
+backend/*.json
+distress-signal-network/backend/*.json
+!backend/package.json
+!backend/railway.json
+!distress-signal-network/backend/package.json
+!distress-signal-network/backend/railway.json

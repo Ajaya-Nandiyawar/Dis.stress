@@ -21,8 +21,12 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+<<<<<<< HEAD:distress-signal-network/backend/package.json
     "node-telegram-bot-api": "^0.67.0",
     "nodemailer": "^8.0.2",
+=======
+    "firebase-admin": "^13.7.0",
+>>>>>>> feature/backend-api:backend/package.json
     "pg": "^8.20.0",
     "redis": "^5.11.0",
     "socket.io": "^4.8.3",
