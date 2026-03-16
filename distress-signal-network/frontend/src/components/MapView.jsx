@@ -7,7 +7,7 @@ import { getHeatmapData } from '../api/sos';
 import { useMapData } from '../hooks/useMapData';
 import { useWebSocket } from '../hooks/useWebSocket';
 
-const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, routingData, cascadeVisible }) => {
+const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, onCitizenStatus, routingData, cascadeVisible }) => {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
     const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone } = useMapData(mapRef);
@@ -16,9 +16,16 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
         if (onBroadcastAlert) onBroadcastAlert(data);
         drawCascadeRipples(data);
         drawAlertZone(data);
+
+        // Ensure map pans to the alert location
+        const lat = Number(data?.lat ?? data?.latitude);
+        const lng = Number(data?.lng ?? data?.longitude);
+        if (mapRef.current && !isNaN(lat) && !isNaN(lng)) {
+            mapRef.current.flyTo({ center: [lng, lat], zoom: 14, speed: 1.2 });
+        }
     };
 
-    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange });
+    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange, onCitizenStatus });
 
     // Draw route whenever routingData changes
     useEffect(() => {

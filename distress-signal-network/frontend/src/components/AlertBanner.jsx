@@ -93,14 +93,14 @@ export default function AlertBanner({ alertActive, alertData }) {
                             {t.confidence(Math.round((parseFloat(alertData?.confidence) || 0) * 100), new Date(alertData?.triggered_at).toLocaleTimeString())}
                         </Text>
                         <Group gap="sm">
-                            <Badge color={alertData?.source_count >= 2 ? 'green' : 'yellow'} size="lg">
-                                {alertData?.validation}
+                            <Badge color={(alertData?.source_count || 0) >= 2 ? 'green' : 'yellow'} size="lg">
+                                {alertData?.validation || 'UNVERIFIED'}
                             </Badge>
                             <Badge color="red" size="lg">
                                 {Math.round((parseFloat(alertData?.confidence) || 0) * 100)}%
                             </Badge>
                             <Text size="sm" c="white">
-                                {alertData?.report_count} reports · {alertData?.source_count} sources
+                                {alertData?.report_count ?? 0} reports · {alertData?.source_count ?? 0} sources
                             </Text>
                         </Group>
                         {localizedTemplate && (

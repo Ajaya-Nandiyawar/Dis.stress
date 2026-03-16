@@ -29,6 +29,7 @@ function App() {
   const [routingData, setRoutingData] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [cascadeVisible, setCascadeVisible] = useState(false);
+  const [citizenStats, setCitizenStats] = useState({ safe: 0, need_rescue: 0, medical: 0 });
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   // Fetch initial stats and alerts on mount
@@ -84,6 +85,9 @@ function App() {
     }, 5 * 60 * 1000);
   };
 
+  const handleCitizenStatus = (data) => {
+    setCitizenStats(prev => ({ ...prev, [data.status]: (prev[data.status] || 0) + 1 }));
+  };
 
   const handleNewSos = () => {
     setStats(prev => ({
@@ -130,6 +134,7 @@ function App() {
           cascadeVisible={cascadeVisible}
           setCascadeVisible={setCascadeVisible}
           onOpenManualAlert={openModal}
+          citizenStats={citizenStats}
         />
       </AppShell.Navbar>
 
@@ -139,6 +144,7 @@ function App() {
           onBroadcastAlert={handleBroadcastAlert}
           onNewSos={handleNewSos}
           onConnectionChange={setWsConnected}
+          onCitizenStatus={handleCitizenStatus}
           routingData={routingData}
           cascadeVisible={cascadeVisible}
         />

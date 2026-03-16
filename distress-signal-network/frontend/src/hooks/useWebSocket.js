@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import { BACKEND_URL, WS_RECONNECT_DELAY_MS } from '../constants/config';
 
-export const useWebSocket = ({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange }) => {
+export const useWebSocket = ({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, onCitizenStatus }) => {
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
 
@@ -13,6 +13,7 @@ export const useWebSocket = ({ addSosPoint, updateSosPoint, onTriageComplete, on
     const onBroadcastAlertRef = useRef(onBroadcastAlert);
     const onNewSosRef = useRef(onNewSos);
     const onConnectionChangeRef = useRef(onConnectionChange);
+    const onCitizenStatusRef = useRef(onCitizenStatus);
 
     // Keep refs in sync with latest props
     useEffect(() => { addSosPointRef.current = addSosPoint; }, [addSosPoint]);
@@ -21,6 +22,7 @@ export const useWebSocket = ({ addSosPoint, updateSosPoint, onTriageComplete, on
     useEffect(() => { onBroadcastAlertRef.current = onBroadcastAlert; }, [onBroadcastAlert]);
     useEffect(() => { onNewSosRef.current = onNewSos; }, [onNewSos]);
     useEffect(() => { onConnectionChangeRef.current = onConnectionChange; }, [onConnectionChange]);
+    useEffect(() => { onCitizenStatusRef.current = onCitizenStatus; }, [onCitizenStatus]);
 
     useEffect(() => {
         const socket = io(BACKEND_URL, {
@@ -75,6 +77,12 @@ export const useWebSocket = ({ addSosPoint, updateSosPoint, onTriageComplete, on
             } catch (e) {
                 console.warn('Audio playback failed (Requires user interaction first):', e.message);
             }
+        });
+
+        socket.on('citizen-status', (data) => {
+            // data: { sos_id, status }   status = "safe" | "need_rescue" | "medical"
+            console.log('citizen-status:', data.sos_id, data.status);
+            if (onCitizenStatusRef.current) onCitizenStatusRef.current(data);
         });
 
         return () => {
