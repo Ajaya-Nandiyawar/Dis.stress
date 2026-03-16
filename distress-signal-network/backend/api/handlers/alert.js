@@ -23,6 +23,16 @@ if (telegramToken && telegramChatId) {
 
 const VALID_TYPES = ['earthquake', 'flood', 'blast', 'fire', 'stampede'];
 
+const VALID_SOURCES = [
+    'manual',
+    'zero-touch',
+    'iot_node',
+    'sonic_cascade',
+    'social_media',   // Shrinidhi's Twitter spoofer
+    'news_feed',      // Shrinidhi's RSS news monitor
+    'weather',        // Shrinidhi's OpenWeatherMap monitor
+];
+
 /**
  * Send FCM push notification to all devices subscribed to 'emergency-alerts' topic.
  * Non-fatal — failures are caught and logged, never rethrown.
@@ -63,7 +73,7 @@ router.post('/trigger', async (req, res) => {
     if (confidence === undefined || typeof confidence !== 'number' || confidence < 0 || confidence > 1) missingOrInvalid.push('confidence');
     if (lat === undefined || typeof lat !== 'number') missingOrInvalid.push('lat');
     if (lng === undefined || typeof lng !== 'number') missingOrInvalid.push('lng');
-    if (!source || typeof source !== 'string') missingOrInvalid.push('source');
+    if (!source || !VALID_SOURCES.includes(source)) missingOrInvalid.push(`source (must be one of: ${VALID_SOURCES.join(', ')})`);
 
     if (missingOrInvalid.length > 0) {
         return res.status(400).json({
@@ -117,10 +127,10 @@ router.post('/trigger', async (req, res) => {
     try {
         // Truncate source to 10 chars to match VARCHAR(10) column constraint
         const dbResult = await pool.query(
-            `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata)
-             VALUES ($1, $2, $3, $4, $5, true, $6)
+            `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata, triggered_at)
+             VALUES ($1, $2, $3, $4, $5, true, $6, NOW())
              RETURNING id, threat_type, confidence, metadata, triggered_at`,
-            [type, displayConfidence, lat, lng, source.slice(0, 10), JSON.stringify(metadata)]
+            [type, displayConfidence, lat, lng, source, JSON.stringify(metadata)]
         );
         alertRecord = dbResult.rows[0];
     } catch (dbErr) {
@@ -240,7 +250,8 @@ router.get('/recent', async (req, res) => {
         if (limit > 50) limit = 50;
 
         const result = await pool.query(
-            `SELECT id, threat_type, confidence, lat, lng, source, broadcast_fired, triggered_at
+            `SELECT id, threat_type, confidence, lat, lng, source,
+                    triggered_at, metadata
              FROM alerts
              ORDER BY triggered_at DESC
              LIMIT $1`,

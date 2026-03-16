@@ -30,6 +30,7 @@ const PORT = process.env.PORT || 3001;
 // ── Schema migration (safe, idempotent) ─────────────────────
 async function runMigrations() {
   try {
+    // ── Resources table ──
     await pool.query(`ALTER TABLE resources DROP CONSTRAINT IF EXISTS resources_type_check`);
     await pool.query(`ALTER TABLE resources ADD CONSTRAINT resources_type_check CHECK (type IN ('ambulance','fire','police','shelter','depot'))`);
     await pool.query(`
@@ -39,6 +40,12 @@ async function runMigrations() {
     `);
     await pool.query(`UPDATE resources SET resource_type = 'ambulance' WHERE resource_type IS NULL`);
     console.log('✔  Schema migration complete (resources table updated)');
+
+    // ── Alerts table ──
+    // Ensure source column exists and is wide enough for all source names
+    await pool.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source VARCHAR(30)`);
+    await pool.query(`ALTER TABLE alerts ALTER COLUMN source TYPE VARCHAR(30)`);
+    console.log('✔  Schema migration complete (alerts.source column ensured)');
   } catch (err) {
     console.error('Schema migration failed (non-fatal):', err.message);
   }
