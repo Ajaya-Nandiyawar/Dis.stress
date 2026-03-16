@@ -27,7 +27,22 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
         const lat = Number(data?.lat ?? data?.latitude);
         const lng = Number(data?.lng ?? data?.longitude);
         if (mapRef.current && !isNaN(lat) && !isNaN(lng)) {
-            mapRef.current.flyTo({ center: [lng, lat], zoom: 14, speed: 1.2 });
+            const map = mapRef.current;
+            const bounds = map.getBounds();
+            
+            // Deduplicate panning if already centered on this spot (~100m tolerance)
+            const currentCenter = map.getCenter();
+            const dist = Math.hypot(currentCenter.lng - lng, currentCenter.lat - lat);
+
+            // SMART PANNING: Only pan if the alert is NOT currently visible in the viewport AND far enough away
+            if (!bounds.contains([lng, lat]) && dist > 0.001) {
+                const currentZoom = map.getZoom();
+                map.flyTo({ 
+                    center: [lng, lat], 
+                    zoom: Math.min(currentZoom, 10), 
+                    speed: 1.0 
+                });
+            }
         }
     };
 
@@ -115,6 +130,53 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
                 map.getCanvas().style.cursor = 'pointer';
             });
             map.on('mouseleave', 'sos-circles', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // ── Disaster Alert Popups (NEW) ──────────────────
+            map.on('click', ['alert-centers', 'alert-markers'], (e) => {
+                const props = e.features[0].properties;
+                const coords = e.features[0].geometry.coordinates.slice();
+
+                new mapboxgl.Popup()
+                    .setLngLat(coords)
+                    .setHTML(`
+                        <div style='font-family:monospace; font-size:13px; color:#fa5252;'>
+                            <b style='font-size:15px;'>🚨 ${props.type?.toUpperCase()}</b><br/>
+                            <b>THREAT LEVEL: ${props.confidence}% CONFIDENCE</b><br/>
+                            <span style='color:#aaa'>Detected by AI Engine</span>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            map.on('mouseenter', ['alert-centers', 'alert-markers'], () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', ['alert-centers', 'alert-markers'], () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // ── Resource Popups (NEW) ────────────────────────
+            map.on('click', 'resource-markers', (e) => {
+                const props = e.features[0].properties;
+                const coords = e.features[0].geometry.coordinates.slice();
+
+                new mapboxgl.Popup()
+                    .setLngLat(coords)
+                    .setHTML(`
+                        <div style='font-family:sans-serif; font-size:13px;'>
+                            <b style='color:#00BCD4;'>${props.resource_type?.toUpperCase()}</b><br/>
+                            <b style='font-size:14px;'>${props.name}</b>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            map.on('mouseenter', 'resource-markers', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'resource-markers', () => {
                 map.getCanvas().style.cursor = '';
             });
 

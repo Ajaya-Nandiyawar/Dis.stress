@@ -17,6 +17,13 @@ import { getRecentAlerts } from './api/alerts';
 import ManualAlertModal from './components/ManualAlertModal';
 import { useDisclosure } from '@mantine/hooks';
 
+const GULF_COORDS = [
+  { lat: 35.6892, lng: 51.3890 }, // Tehran
+  { lat: 32.6539, lng: 51.6660 }, // Isfahan
+  { lat: 28.9234, lng: 50.8358 }  // Bushehr
+];
+let blastIndex = 0;
+
 function App() {
   const [stats, setStats] = useState({
     by_severity: { critical: 0, urgent: 0, standard: 0, untriaged: 0 }
@@ -67,6 +74,17 @@ function App() {
   };
 
   const handleBroadcastAlert = (data) => {
+    // Redirect 2-3 blast alerts to Gulf Area
+    if (data.type?.toLowerCase() === 'blast') {
+      const coord = GULF_COORDS[blastIndex % GULF_COORDS.length];
+      data.lat = coord.lat;
+      data.lng = coord.lng;
+      data.latitude = coord.lat;
+      data.longitude = coord.lng;
+      blastIndex++;
+      console.log(`[SIMULATION] Redirected blast alert to Gulf: ${data.lat}, ${data.lng}`);
+    }
+
     setAlertActive(true);
     setAlertData(data);
 
