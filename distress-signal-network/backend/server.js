@@ -42,7 +42,9 @@ async function runMigrations() {
     console.log('✔  Schema migration complete (resources table updated)');
 
     // ── Alerts table ──
-    // Ensure source column exists and is wide enough for all source names
+    // Drop the old tight CHECK on source (was: 'nlp','iot','manual') so new sources are accepted
+    await pool.query(`ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_source_check`);
+    // Widen source column and ensure it exists
     await pool.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source VARCHAR(30)`);
     await pool.query(`ALTER TABLE alerts ALTER COLUMN source TYPE VARCHAR(30)`);
     console.log('✔  Schema migration complete (alerts.source column ensured)');

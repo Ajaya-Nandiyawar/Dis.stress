@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   confidence       FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
   lat              FLOAT NOT NULL,
   lng              FLOAT NOT NULL,
-  source           VARCHAR(10) NOT NULL CHECK (source IN ('nlp','iot','manual')),
+  source           VARCHAR(30) NOT NULL,
   broadcast_fired  BOOLEAN DEFAULT false NOT NULL,
   metadata         JSONB DEFAULT '{}'::jsonb NOT NULL,
   triggered_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
