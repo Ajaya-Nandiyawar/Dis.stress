@@ -59,10 +59,12 @@ class AlertPayload(BaseModel):
     type       : 'earthquake' | 'flood' | 'blast' | 'fire' | 'stampede'
     confidence : 0.0–1.0  (must be >= 0.85 to trigger broadcast)
     lat / lng  : epicentre of detected threat
-    source     : always 'nlp' from this service
+    source     : 'social_media' | 'news_feed' | 'weather' | 'nlp'
+    metadata   : optional dict for extra info (e.g. raw text, URLs)
     """
     type: str
     confidence: float = Field(ge=0.0, le=1.0)
     lat: float
     lng: float
-    source: str = "nlp"
+    source: str = "social_media"
+    metadata: Dict[str, Any] = Field(default_factory=dict)

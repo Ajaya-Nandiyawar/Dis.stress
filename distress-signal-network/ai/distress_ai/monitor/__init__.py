@@ -121,12 +121,23 @@ async def monitor_loop() -> None:
                         "[ALERT]  Threat detected!  type=%s  conf=%.2f  platform=%s",
                         threat_type, final_confidence, post.get("platform", "unknown"),
                     )
+                    source_type = "social_media"
+                    if post.get("platform") == "rss" or post.get("platform") == "news":
+                        source_type = "news_feed"
+                    elif post.get("platform") == "weather":
+                        source_type = "weather"
+                        
                     payload = AlertPayload(
                         type=threat_type,
                         confidence=final_confidence,
                         lat=post.get("lat", 0.0),
                         lng=post.get("lng", 0.0),
-                        source="nlp",
+                        source=source_type,
+                        metadata={
+                            "text": post.get("text", ""),
+                            "url": post.get("url", ""),
+                            "platform": post.get("platform", "unknown")
+                        }
                     )
                     await post_alert_trigger(payload)
                 else:
