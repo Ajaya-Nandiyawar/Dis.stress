@@ -363,8 +363,7 @@ async function submitStatus(req, res) {
          COALESCE(metadata, '{}'),
          '{citizen_status}',
          $1::jsonb
-       ),
-       updated_at = NOW()
+       )
        WHERE id = $2
        RETURNING id, metadata`,
             [JSON.stringify(status), sos_id]
