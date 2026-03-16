@@ -40,6 +40,8 @@ async function sendFcm(alertData) {
                 type:     alertData.type,
                 lat:      String(alertData.lat),
                 lng:      String(alertData.lng),
+                source_count: String(alertData.source_count || 1),
+                validation:   alertData.validation || 'SINGLE SOURCE',
             },
             topic: 'emergency-alerts',
         });
@@ -96,46 +98,48 @@ router.post('/trigger', async (req, res) => {
         const alert_id = alertRecord.id;
         const triggered_at = alertRecord.triggered_at;
 
-        // STEP 1b — Corroboration: query recent SOS reports (last 10 min)
+        // STEP 1b — Cross-validation: Count distinct sources and total reports in last 10 minutes
         let source_count = 1;
         let report_count = 1;
         try {
-            const corrobResult = await pool.query(
+            const crossValidation = await pool.query(
                 `SELECT
-                   COUNT(*)::int                   AS report_count,
-                   COUNT(DISTINCT source)::int      AS source_count
+                   COUNT(DISTINCT source) AS source_count,
+                   COUNT(*)               AS report_count
                  FROM sos_reports
-                 WHERE created_at >= NOW() - INTERVAL '10 minutes'`
+                 WHERE created_at > NOW() - INTERVAL '10 minutes'
+                   AND resolved = false`
             );
-            const row = corrobResult.rows[0];
-            report_count = row.report_count || 1;
-            source_count = row.source_count || 1;
+            const row = crossValidation.rows[0];
+            source_count = parseInt(row.source_count) || 1;
+            report_count = parseInt(row.report_count) || 1;
         } catch (corrobErr) {
-            console.error('Corroboration query failed (non-fatal):', corrobErr.message);
+            console.error('Cross-validation query failed (non-fatal):', corrobErr.message);
         }
 
-        // Boost confidence: +5% per additional distinct source, capped at 1.0
-        const boosted_confidence = Math.min(
-            1.0,
-            confidence + (source_count - 1) * 0.05
+        // Boost confidence: +3% per additional distinct source, capped at 0.99
+        // This replaces the raw NLP confidence with displayConfidence
+        const displayConfidence = Math.min(
+            0.99,
+            confidence + (source_count - 1) * 0.03
         );
 
         // Derive validation label
-        const validation = source_count >= 2 ? 'CROSS-VALIDATED' : 'SINGLE SOURCE';
+        const validationLabel = source_count >= 2 ? 'CROSS-VALIDATED' : 'SINGLE SOURCE';
 
-        console.log(`Alert corroboration: source_count:${source_count}, report_count:${report_count}, confidence:${confidence}→${boosted_confidence}, validation:'${validation}'`);
+        console.log(`Alert cross-validation: source_count:${source_count}, report_count:${report_count}, confidence:${confidence}→${displayConfidence}, validation:'${validationLabel}'`);
 
         // Build enriched payload for broadcast channels
         const broadcastPayload = {
             alert_id,
             type,
-            confidence: boosted_confidence,
+            confidence: displayConfidence,
             lat,
             lng,
             triggered_at,
             source_count,
             report_count,
-            validation,
+            validation: validationLabel,
             metadata
         };
 
@@ -202,11 +206,11 @@ router.post('/trigger', async (req, res) => {
             broadcast: true,
             alert_id,
             type: alertRecord.threat_type,
-            confidence: boosted_confidence,
+            confidence: displayConfidence,
             source_count,
             report_count,
-            validation,
-            channels_fired: ['redis', 'websocket', 'fcm'],
+            validation: validationLabel,
+            channels_fired: ['redis', 'websocket', 'fcm', 'cell_broadcast', 'telegram', 'mqtt', 'email'],
             triggered_at
         });
 
