@@ -85,50 +85,57 @@ router.post('/trigger', async (req, res) => {
         });
     }
 
-    // ── Confidence >= 0.85: Trigger Broadcast ───────────────────
+    // ── STEP 1: Cross-validation (Moved up to use boosted confidence in DB) ─────
+    let source_count = 1;
+    let report_count = 1;
+    let validationLabel = 'SINGLE SOURCE';
+    let displayConfidence = confidence;
+
     try {
-        // STEP 1 — Save to database
+        const crossValidation = await pool.query(
+            `SELECT
+               COUNT(DISTINCT source) AS source_count,
+               COUNT(*)               AS report_count
+             FROM sos_reports
+             WHERE created_at > NOW() - INTERVAL '10 minutes'
+               AND resolved = false`
+        );
+        const row = crossValidation.rows[0];
+        source_count = parseInt(row.source_count) || 1;
+        report_count = parseInt(row.report_count) || 1;
+        
+        displayConfidence = Math.min(0.99, confidence + (source_count - 1) * 0.03);
+        validationLabel = source_count >= 2 ? 'CROSS-VALIDATED' : 'SINGLE SOURCE';
+        
+        console.log(`[ALERT] Cross-validation: sources=${source_count}, reports=${report_count}, confidence=${confidence}→${displayConfidence}`);
+    } catch (corrobErr) {
+        console.error('[ALERT] Cross-validation query failed (non-fatal):', corrobErr.message);
+    }
+
+    // ── STEP 2: Save Alert to Database ───────────────────────────────────────
+    let alertRecord;
+    try {
+        // Use the boosted confidence in the database as well for consistency
         const dbResult = await pool.query(
             `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata)
              VALUES ($1, $2, $3, $4, $5, true, $6)
              RETURNING id, threat_type, confidence, metadata, triggered_at`,
-            [type, confidence, lat, lng, source, metadata]
+            [type, displayConfidence, lat, lng, source, JSON.stringify(metadata)]
         );
-        const alertRecord = dbResult.rows[0];
-        const alert_id = alertRecord.id;
-        const triggered_at = alertRecord.triggered_at;
+        alertRecord = dbResult.rows[0];
+    } catch (dbErr) {
+        console.error('[ALERT] Database INSERT failed:', dbErr.stack || dbErr.message);
+        return res.status(500).json({
+            error: true,
+            code: 'DB_ERROR',
+            message: 'Failed to process alert trigger.'
+        });
+    }
 
-        // STEP 1b — Cross-validation: Count distinct sources and total reports in last 10 minutes
-        let source_count = 1;
-        let report_count = 1;
-        try {
-            const crossValidation = await pool.query(
-                `SELECT
-                   COUNT(DISTINCT source) AS source_count,
-                   COUNT(*)               AS report_count
-                 FROM sos_reports
-                 WHERE created_at > NOW() - INTERVAL '10 minutes'
-                   AND resolved = false`
-            );
-            const row = crossValidation.rows[0];
-            source_count = parseInt(row.source_count) || 1;
-            report_count = parseInt(row.report_count) || 1;
-        } catch (corrobErr) {
-            console.error('Cross-validation query failed (non-fatal):', corrobErr.message);
-        }
+    const alert_id = alertRecord.id;
+    const triggered_at = alertRecord.triggered_at;
 
-        // Boost confidence: +3% per additional distinct source, capped at 0.99
-        // This replaces the raw NLP confidence with displayConfidence
-        const displayConfidence = Math.min(
-            0.99,
-            confidence + (source_count - 1) * 0.03
-        );
-
-        // Derive validation label
-        const validationLabel = source_count >= 2 ? 'CROSS-VALIDATED' : 'SINGLE SOURCE';
-
-        console.log(`Alert cross-validation: source_count:${source_count}, report_count:${report_count}, confidence:${confidence}→${displayConfidence}, validation:'${validationLabel}'`);
-
+    try {
         // Build enriched payload for broadcast channels
         const broadcastPayload = {
             alert_id,
