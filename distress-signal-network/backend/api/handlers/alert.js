@@ -9,6 +9,16 @@ const router = express.Router();
 const pool = require('../../db/pool');
 const { publish } = require('../../redis/publisher');
 const http = require('http'); // For mock cell broadcast (or https if making real call)
+const TelegramBot = require('node-telegram-bot-api');
+const { sendEmailAlert } = require('../../services/email');
+
+// Initialize Telegram Bot if token provider
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+let tgBot = null;
+if (telegramToken && telegramChatId) {
+    tgBot = new TelegramBot(telegramToken, { polling: false });
+}
 
 const VALID_TYPES = ['earthquake', 'flood', 'blast', 'fire', 'stampede'];
 
@@ -90,7 +100,22 @@ router.post('/trigger', async (req, res) => {
             resolve('push_ok');
         });
 
-        await Promise.all([cellBroadcastPromise, mqttPromise, pushPromise]);
+        const telegramPromise = new Promise(async (resolve) => {
+            if (tgBot && telegramChatId) {
+                try {
+                    const tHeader = `🚨 *CRITICAL ALERT: ${(type || 'UNKNOWN').toUpperCase()}*`;
+                    const tBody = `Confidence: ${Math.round((confidence || 0) * 100)}%`;
+                    const tInst = metadata?.template ? `\nInstructions: ${metadata.template}` : '';
+                    await tgBot.sendMessage(telegramChatId, `${tHeader}\n${tBody}${tInst}`, { parse_mode: 'Markdown' });
+                    console.log('Telegram broadcast fired');
+                } catch (err) {
+                    console.error('Telegram broadcast failed:', err.message);
+                }
+            }
+            resolve('telegram_ok');
+        });
+
+        await Promise.all([cellBroadcastPromise, mqttPromise, pushPromise, telegramPromise]);
 
         // STEP 3 — Publish to Redis 'alert-broadcast' channel
         try {
@@ -103,6 +128,9 @@ router.post('/trigger', async (req, res) => {
         try {
             const { getIO } = require('../../ws/socket');
             getIO().emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at, metadata });
+            
+            // NEW: Trigger Email Broadcast
+            sendEmailAlert(alertRecord.threat_type, alertRecord.confidence);
         } catch (wsErr) {
             console.error('WebSocket emit failed (non-fatal):', wsErr.message);
         }
