@@ -115,23 +115,16 @@ router.post('/trigger', async (req, res) => {
     // ── STEP 2: Save Alert to Database ───────────────────────────────────────
     let alertRecord;
     try {
-        const query = `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata)
+        // Truncate source to 10 chars to match VARCHAR(10) column constraint
+        const dbResult = await pool.query(
+            `INSERT INTO alerts (threat_type, confidence, lat, lng, source, broadcast_fired, metadata)
              VALUES ($1, $2, $3, $4, $5, true, $6)
-             RETURNING id, threat_type, confidence, metadata, triggered_at`;
-        const params = [type, displayConfidence, lat, lng, source, JSON.stringify(metadata)];
-        
-        console.log('[ALERT] Executing DB Insert:', query);
-        console.log('[ALERT] With Params:', params);
-
-        // Use the boosted confidence in the database as well for consistency
-        const dbResult = await pool.query(query, params);
+             RETURNING id, threat_type, confidence, metadata, triggered_at`,
+            [type, displayConfidence, lat, lng, source.slice(0, 10), JSON.stringify(metadata)]
+        );
         alertRecord = dbResult.rows[0];
     } catch (dbErr) {
-        console.error('[ALERT] Database INSERT failed!');
-        console.error('[ALERT] Error Message:', dbErr.message);
-        console.error('[ALERT] Error Stack:', dbErr.stack);
-        console.error('[ALERT] Error Detail:', dbErr.detail);
-        console.error('[ALERT] Error Hint:', dbErr.hint);
+        console.error('[ALERT] Database INSERT failed:', dbErr.message);
         return res.status(500).json({
             error: true,
             code: 'DB_ERROR',
