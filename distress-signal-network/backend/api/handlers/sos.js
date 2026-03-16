@@ -194,7 +194,10 @@ router.get('/stats', async (req, res) => {
                 COUNT(*) FILTER (WHERE source = 'manual') AS manual,
                 COUNT(*) FILTER (WHERE source = 'zero-touch') AS zero_touch,
                 COUNT(*) FILTER (WHERE source = 'iot_node') AS iot_node,
-                COUNT(*) FILTER (WHERE source = 'sonic_cascade') AS sonic_cascade
+                COUNT(*) FILTER (WHERE source = 'sonic_cascade') AS sonic_cascade,
+                COUNT(*) FILTER (WHERE metadata->>'citizen_status' = 'safe') AS safe_count,
+                COUNT(*) FILTER (WHERE metadata->>'citizen_status' = 'need_rescue') AS rescue_count,
+                COUNT(*) FILTER (WHERE metadata->>'citizen_status' = 'medical') AS medical_count
              FROM sos_reports
              WHERE resolved = false`
         );
@@ -215,6 +218,14 @@ router.get('/stats', async (req, res) => {
                 iot_node: parseInt(row.iot_node, 10),
                 sonic_cascade: parseInt(row.sonic_cascade, 10)
             },
+            citizen_status: {
+                safe: parseInt(row.safe_count, 10),
+                need_rescue: parseInt(row.rescue_count, 10),
+                medical: parseInt(row.medical_count, 10)
+            },
+            safe_count: parseInt(row.safe_count, 10),
+            rescue_count: parseInt(row.rescue_count, 10),
+            medical_count: parseInt(row.medical_count, 10),
             resolved: parseInt(row.resolved, 10),
             active_nodes: 6,
             last_updated: new Date().toISOString()
@@ -325,4 +336,61 @@ router.patch('/:id/triage', async (req, res) => {
     }
 });
 
-module.exports = router;
+/**
+ * submitStatus — Update citizen status for an SOS report
+ * Called by the Flutter mobile app.
+ */
+async function submitStatus(req, res) {
+    const { sos_id, status } = req.body;
+
+    // Validate inputs
+    if (!sos_id || typeof sos_id !== 'number') {
+        return res.status(400).json({ error: 'sos_id must be a number' });
+    }
+    const validStatuses = ['safe', 'need_rescue', 'medical'];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+            error: 'Invalid status',
+            valid: validStatuses
+        });
+    }
+
+    // Update metadata column with citizen status
+    try {
+        const result = await pool.query(
+            `UPDATE sos_reports
+       SET metadata = jsonb_set(
+         COALESCE(metadata, '{}'),
+         '{citizen_status}',
+         $1::jsonb
+       ),
+       updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, metadata`,
+            [JSON.stringify(status), sos_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'SOS report not found' });
+        }
+
+        // Emit WebSocket event so dashboard updates instantly
+        try {
+            const { getIO } = require('../../ws/socket');
+            getIO().emit('citizen-status', { sos_id, status });
+        } catch (wsErr) {
+            console.error('[STATUS] WebSocket emit failed (non-fatal):', wsErr.message);
+        }
+
+        console.log(`[STATUS] SOS ${sos_id} updated to: ${status}`);
+        return res.json({ received: true, sos_id, status });
+    } catch (dbErr) {
+        console.error('[STATUS] DB update failed:', dbErr.message);
+        return res.status(500).json({ error: 'Failed to update status' });
+    }
+}
+
+module.exports = {
+    router,
+    submitStatus
+};
