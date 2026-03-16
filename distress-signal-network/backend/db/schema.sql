@@ -40,9 +40,11 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- ============================================
 CREATE TABLE IF NOT EXISTS resources (
   id             SERIAL PRIMARY KEY,
-  type           VARCHAR(20) NOT NULL CHECK (type IN ('ambulance','fire','police')),
+  type           VARCHAR(20) NOT NULL CHECK (type IN ('ambulance','fire','police','shelter','depot')),
+  name           VARCHAR(100),
   lat            FLOAT NOT NULL,
   lng            FLOAT NOT NULL,
+  resource_type  VARCHAR(20) DEFAULT 'ambulance',
   available      BOOLEAN DEFAULT true NOT NULL,
   last_updated   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

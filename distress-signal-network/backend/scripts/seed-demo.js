@@ -19,7 +19,9 @@ async function seed() {
         // STEP 1 — Clear existing data
         console.log('Clearing old SEED data...');
         await pool.query("DELETE FROM sos_reports WHERE message LIKE '%SEED%'");
-        await pool.query("DELETE FROM resources WHERE type = 'ambulance'");
+        // Delete existing ambulances, shelters, and depots
+        await pool.query("DELETE FROM resources WHERE resource_type IN ('ambulance', 'shelter', 'depot')");
+
 
         // STEP 2 — Insert 8 Level 1 (CRITICAL) reports
         console.log('Inserting CRITICAL reports...');
@@ -77,23 +79,28 @@ async function seed() {
             ]);
         }
 
-        // STEP 5 — Insert 3 ambulance resources
-        console.log('Inserting Ambulances...');
-        const ambulances = [
-            { lat: 18.5150, lng: 73.8500 }, // Sassoon Hospital
-            { lat: 18.5600, lng: 73.7769 }, // Hinjewadi
-            { lat: 18.4968, lng: 73.8567 }, // Swargate
+        // STEP 5 — Insert Resources (Ambulances, Shelters, Depots)
+        console.log('Inserting Resources...');
+        const resources = [
+            { type: 'shelter',   name: 'Deccan Community Hall',     lat: 18.5176, lng: 73.8397, rt: 'shelter' },
+            { type: 'shelter',   name: 'Baner Relief Camp',          lat: 18.5590, lng: 73.7877, rt: 'shelter' },
+            { type: 'shelter',   name: 'Swargate Relief Centre',     lat: 18.4968, lng: 73.8567, rt: 'shelter' },
+            { type: 'depot',     name: 'Sassoon Hospital Supplies',  lat: 18.5150, lng: 73.8500, rt: 'depot' },
+            { type: 'depot',     name: 'Khadki Supply Depot',        lat: 18.5669, lng: 73.8463, rt: 'depot' },
+            { type: 'ambulance', name: 'Ambulance - Sassoon',        lat: 18.5150, lng: 73.8500, rt: 'ambulance' },
+            { type: 'ambulance', name: 'Ambulance - Hinjewadi',      lat: 18.5600, lng: 73.7769, rt: 'ambulance' },
+            { type: 'ambulance', name: 'Ambulance - Swargate',       lat: 18.4968, lng: 73.8567, rt: 'ambulance' },
         ];
 
-        for (const amb of ambulances) {
+        for (const res of resources) {
             await pool.query(`
-                INSERT INTO resources (type, lat, lng, available)
-                VALUES ('ambulance', $1, $2, true)
-            `, [amb.lat, amb.lng]);
+                INSERT INTO resources (type, name, lat, lng, available, resource_type)
+                VALUES ($1, $2, $3, $4, true, $5)
+            `, [res.type, res.name, res.lat, res.lng, res.rt]);
         }
 
         // STEP 6 — Log summary on completion
-        console.log('Seed complete: 8 critical + 10 urgent + 7 standard SOS reports. 3 ambulances.');
+        console.log('Seed complete: 8 critical + 10 urgent + 7 standard SOS reports. 8 resources seeded.');
 
     } catch (err) {
         console.error('Seed script failed:', err);
