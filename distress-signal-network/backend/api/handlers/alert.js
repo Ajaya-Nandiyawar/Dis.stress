@@ -96,62 +96,9 @@ router.post('/trigger', async (req, res) => {
         const alert_id = alertRecord.id;
         const triggered_at = alertRecord.triggered_at;
 
-<<<<<<< HEAD:distress-signal-network/backend/api/handlers/alert.js
-        // STEP 2 — Fire all broadcast channels concurrently
-        const cellBroadcastPromise = new Promise((resolve) => {
-            // Mock call to telecom API
-            const reqUrl = new URL('https://mock-cell-broadcast.example.com/broadcast');
-            const options = {
-                hostname: reqUrl.hostname,
-                path: reqUrl.pathname,
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            };
-            const req = require('https').request(options, (res) => {
-                resolve('cell_broadcast_ok');
-            });
-            req.on('error', (e) => {
-                console.error(`Cell Broadcast API failed (non-fatal): ${e.message}`);
-                resolve('cell_broadcast_failed_but_continue');
-            });
-            req.write(JSON.stringify({ type, lat, lng }));
-            req.end();
-            setTimeout(() => resolve('cell_broadcast_timeout'), 2000); // safety timeout
-        });
-
-        const mqttPromise = new Promise((resolve) => {
-            console.log(`MQTT broadcast fired: ${type} at ${lat},${lng}`);
-            resolve('mqtt_ok');
-        });
-
-        const pushPromise = new Promise((resolve) => {
-            console.log(`Push notification fired to all devices: ${type}`);
-            resolve('push_ok');
-        });
-
-        const telegramPromise = new Promise(async (resolve) => {
-            if (tgBot && telegramChatId) {
-                try {
-                    const tHeader = `🚨 *CRITICAL ALERT: ${(type || 'UNKNOWN').toUpperCase()}*`;
-                    const tBody = `Confidence: ${Math.round((confidence || 0) * 100)}%`;
-                    const tInst = metadata?.template ? `\nInstructions: ${metadata.template}` : '';
-                    await tgBot.sendMessage(telegramChatId, `${tHeader}\n${tBody}${tInst}`, { parse_mode: 'Markdown' });
-                    console.log('Telegram broadcast fired');
-                } catch (err) {
-                    console.error('Telegram broadcast failed:', err.message);
-                }
-            }
-            resolve('telegram_ok');
-        });
-
-        await Promise.all([cellBroadcastPromise, mqttPromise, pushPromise, telegramPromise]);
-
-        // STEP 3 — Publish to Redis 'alert-broadcast' channel
-=======
         // STEP 1b — Corroboration: query recent SOS reports (last 10 min)
         let source_count = 1;
         let report_count = 1;
->>>>>>> feature/backend-api:backend/api/handlers/alert.js
         try {
             const corrobResult = await pool.query(
                 `SELECT
@@ -167,18 +114,6 @@ router.post('/trigger', async (req, res) => {
             console.error('Corroboration query failed (non-fatal):', corrobErr.message);
         }
 
-<<<<<<< HEAD:distress-signal-network/backend/api/handlers/alert.js
-        // STEP 4 — Emit WebSocket 'broadcast-alert' event
-        try {
-            const { getIO } = require('../../ws/socket');
-            getIO().emit('broadcast-alert', { alert_id, type, confidence, lat, lng, triggered_at, metadata });
-            
-            // NEW: Trigger Email Broadcast
-            sendEmailAlert(alertRecord.threat_type, alertRecord.confidence);
-        } catch (wsErr) {
-            console.error('WebSocket emit failed (non-fatal):', wsErr.message);
-        }
-=======
         // Boost confidence: +5% per additional distinct source, capped at 1.0
         const boosted_confidence = Math.min(
             1.0,
@@ -200,11 +135,44 @@ router.post('/trigger', async (req, res) => {
             triggered_at,
             source_count,
             report_count,
-            validation
+            validation,
+            metadata
         };
 
         // STEP 2 — Fire all broadcast channels concurrently (all non-fatal)
-        const channelNames = ['redis', 'websocket', 'fcm'];
+        const cellBroadcastPromise = new Promise((resolve) => {
+            const reqUrl = new URL('https://mock-cell-broadcast.example.com/broadcast');
+            const options = {
+                hostname: reqUrl.hostname,
+                path: reqUrl.pathname,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            };
+            const req = require('https').request(options, (res) => { resolve('cell_broadcast_ok'); });
+            req.on('error', (e) => {
+                console.error(`Cell Broadcast API failed (non-fatal): ${e.message}`);
+                resolve('cell_broadcast_failed');
+            });
+            req.write(JSON.stringify({ type, lat, lng }));
+            req.end();
+            setTimeout(() => resolve('cell_broadcast_timeout'), 2000);
+        });
+
+        const telegramPromise = (async () => {
+            if (tgBot && telegramChatId) {
+                try {
+                    const tHeader = `🚨 *CRITICAL ALERT: ${(type || 'UNKNOWN').toUpperCase()}*`;
+                    const tBody = `Confidence: ${Math.round((boosted_confidence || 0) * 100)}% (${validation})`;
+                    const tInst = metadata?.template ? `\nInstructions: ${metadata.template}` : '';
+                    await tgBot.sendMessage(telegramChatId, `${tHeader}\n${tBody}${tInst}`, { parse_mode: 'Markdown' });
+                    console.log('Telegram broadcast fired');
+                } catch (err) {
+                    console.error('Telegram broadcast failed:', err.message);
+                }
+            }
+        })();
+
+        const channelNames = ['redis', 'websocket', 'fcm', 'cell_broadcast', 'telegram', 'mqtt', 'email'];
         const results = await Promise.allSettled([
             publish('alert-broadcast', broadcastPayload),
             (async () => {
@@ -212,6 +180,14 @@ router.post('/trigger', async (req, res) => {
                 getIO().emit('broadcast-alert', broadcastPayload);
             })(),
             sendFcm(broadcastPayload),
+            cellBroadcastPromise,
+            telegramPromise,
+            (async () => { console.log(`MQTT broadcast fired: ${type} at ${lat},${lng}`); })(),
+            (async () => { 
+                try { 
+                    await sendEmailAlert(type, boosted_confidence); 
+                } catch(e) { console.error('Email alert failed:', e.message); }
+            })()
         ]);
 
         // Log any settled failures for debugging
@@ -220,7 +196,6 @@ router.post('/trigger', async (req, res) => {
                 console.error(`[BROADCAST] Channel ${channelNames[i]} failed:`, r.reason?.message);
             }
         });
->>>>>>> feature/backend-api:backend/api/handlers/alert.js
 
         // ── Final 200 Response ──────────────────────────────────
         return res.status(200).json({
