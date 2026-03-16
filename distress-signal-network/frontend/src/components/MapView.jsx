@@ -10,11 +10,12 @@ import { useWebSocket } from '../hooks/useWebSocket';
 const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, routingData, cascadeVisible }) => {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
-    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility } = useMapData(mapRef);
+    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone } = useMapData(mapRef);
 
     const handleBroadcastAlertWithCascade = (data) => {
         if (onBroadcastAlert) onBroadcastAlert(data);
         drawCascadeRipples(data);
+        drawAlertZone(data);
     };
 
     useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange });
