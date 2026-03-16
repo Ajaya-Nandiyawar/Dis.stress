@@ -82,14 +82,27 @@ async function seed() {
         // STEP 5 — Insert Resources (Ambulances, Shelters, Depots)
         console.log('Inserting Resources...');
         const resources = [
+            // --- Shelters ---
             { type: 'shelter',   name: 'Deccan Community Hall',     lat: 18.5176, lng: 73.8397, rt: 'shelter' },
             { type: 'shelter',   name: 'Baner Relief Camp',          lat: 18.5590, lng: 73.7877, rt: 'shelter' },
             { type: 'shelter',   name: 'Swargate Relief Centre',     lat: 18.4968, lng: 73.8567, rt: 'shelter' },
+            { type: 'shelter',   name: 'Aundh Community Center',     lat: 18.5580, lng: 73.8075, rt: 'shelter' },
+            { type: 'shelter',   name: 'Kothrud Relief Camp',        lat: 18.5074, lng: 73.8077, rt: 'shelter' },
+            { type: 'shelter',   name: 'Hadapsar Shelter',           lat: 18.5089, lng: 73.9259, rt: 'shelter' },
+            { type: 'shelter',   name: 'Viman Nagar Hall',           lat: 18.5679, lng: 73.9143, rt: 'shelter' },
+
+            // --- Depots ---
             { type: 'depot',     name: 'Sassoon Hospital Supplies',  lat: 18.5150, lng: 73.8500, rt: 'depot' },
             { type: 'depot',     name: 'Khadki Supply Depot',        lat: 18.5669, lng: 73.8463, rt: 'depot' },
+            { type: 'depot',     name: 'Pimpri Relief Warehouse',    lat: 18.6298, lng: 73.7997, rt: 'depot' },
+            { type: 'depot',     name: 'Katraj Supply Point',        lat: 18.4529, lng: 73.8543, rt: 'depot' },
+            { type: 'depot',     name: 'Wagholi Logistics Hub',      lat: 18.5808, lng: 73.9787, rt: 'depot' },
+
+            // --- Ambulances ---
             { type: 'ambulance', name: 'Ambulance - Sassoon',        lat: 18.5150, lng: 73.8500, rt: 'ambulance' },
             { type: 'ambulance', name: 'Ambulance - Hinjewadi',      lat: 18.5600, lng: 73.7769, rt: 'ambulance' },
             { type: 'ambulance', name: 'Ambulance - Swargate',       lat: 18.4968, lng: 73.8567, rt: 'ambulance' },
+            { type: 'ambulance', name: 'Ambulance - Aundh',          lat: 18.5580, lng: 73.8075, rt: 'ambulance' },
         ];
 
         for (const res of resources) {
