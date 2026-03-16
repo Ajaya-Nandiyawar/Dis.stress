@@ -9,7 +9,7 @@
 ```
 ┌──────────────────────────────────────────────────────┐
 │                  Node.js Backend                     │
-│        (Railway / ngrok — port 3000)                 │
+│  https://tempestuous-cleopatra-scabbily.ngrok-free.dev│
 └──────┬──────────────┬───────────────┬────────────────┘
        │ Redis PubSub │  HTTP PATCH   │  HTTP POST
        │  sos-events  │  /api/sos/:id │  /api/alert
@@ -135,7 +135,7 @@ The service will:
 ## 🧪 Background Pipelines
 
 ### Redis Subscriber (`subscriber.py`)
-Listens to `sos-events` channel → runs NLP triage → PATCHes severity back to Node.js within 500ms.
+Listens to `sos-events` channel → runs NLP triage → PATCHes severity back to the Node.js backend (`https://tempestuous-cleopatra-scabbily.ngrok-free.dev`) within 500ms.
 
 ### Social-Media Monitor (`monitor.py`)
 Polls simulated social feeds every 30s. Detects threats (`earthquake`, `flood`, `blast`, `fire`, `stampede`) with confidence scoring. If confidence ≥ 0.85, fires `POST /api/alert/trigger` to the backend. Respects a 3-minute per-threat-type cooldown to prevent spamming.
@@ -165,7 +165,7 @@ Keyword-based severity classifier:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `REDIS_URL` | Yes | Redis connection string (Railway) |
-| `BACKEND_URL` | Yes | Node.js backend URL (ngrok / Railway) |
+| `BACKEND_URL` | Yes | Node.js backend URL — currently `https://tempestuous-cleopatra-scabbily.ngrok-free.dev` |
 | `TRIAGE_CONFIDENCE_THRESHOLD` | No | Default: `0.70` |
 | `ALERT_CONFIDENCE_THRESHOLD` | No | Default: `0.85` |
 | `MONITOR_INTERVAL_SECONDS` | No | Default: `30` |
