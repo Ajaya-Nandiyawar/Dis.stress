@@ -7,18 +7,24 @@ import { getHeatmapData } from '../api/sos';
 import { useMapData } from '../hooks/useMapData';
 import { useWebSocket } from '../hooks/useWebSocket';
 
-const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, routingData, cascadeVisible }) => {
+const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, onConnectionChange, onCitizenStatus, routingData, cascadeVisible, trafficVisible, evacuationVisible }) => {
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
-    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone } = useMapData(mapRef);
+    const { initMapSources, loadInitialData, addSosPoint, updateSosPoint, drawRoute, drawCascadeRipples, toggleCascadeVisibility, drawAlertZone, loadResources, drawEvacuation } = useMapData(mapRef);
+    const sosRecordsRef = useRef([]);
 
     const handleBroadcastAlertWithCascade = (data) => {
         if (onBroadcastAlert) onBroadcastAlert(data);
         drawCascadeRipples(data);
         drawAlertZone(data);
+
+        // Update local records ref
+        if (data.lat && data.lng && data.severity) {
+            sosRecordsRef.current.push(data);
+        }
     };
 
-    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange });
+    useWebSocket({ addSosPoint, updateSosPoint, onTriageComplete, onBroadcastAlert: handleBroadcastAlertWithCascade, onNewSos, onConnectionChange, onCitizenStatus });
 
     // Draw route whenever routingData changes
     useEffect(() => {
@@ -29,6 +35,21 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
     useEffect(() => {
         toggleCascadeVisibility(cascadeVisible);
     }, [cascadeVisible, toggleCascadeVisibility]);
+
+    // Handle Traffic Layer visibility
+    useEffect(() => {
+        if (!mapRef.current) return;
+        mapRef.current.setLayoutProperty('traffic', 'visibility', trafficVisible ? 'visible' : 'none');
+    }, [trafficVisible]);
+
+    // Handle Evacuation Route visibility and calculation
+    useEffect(() => {
+        if (!mapRef.current) return;
+        mapRef.current.setLayoutProperty('evac-route', 'visibility', evacuationVisible ? 'visible' : 'none');
+        if (evacuationVisible) {
+            drawEvacuation(sosRecordsRef.current);
+        }
+    }, [evacuationVisible, drawEvacuation]);
 
     useEffect(() => {
         if (mapRef.current) return;
@@ -54,6 +75,7 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
             getHeatmapData()
                 .then(data => {
                     const records = data || [];
+                    sosRecordsRef.current = records;
                     loadInitialData(records);
                     console.log(`Loaded ${records.length} SOS reports onto map`);
                 })
@@ -61,6 +83,9 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
                     console.error('Failed to fetch initial heatmap data:', err);
                     loadInitialData([]);
                 });
+
+            // Load resource markers (shelters, depots, ambulances)
+            loadResources(map);
 
             map.on('click', 'sos-circles', (e) => {
                 const props = e.features[0].properties;
@@ -83,6 +108,53 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
                 map.getCanvas().style.cursor = 'pointer';
             });
             map.on('mouseleave', 'sos-circles', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // ── Disaster Alert Popups (NEW) ──────────────────
+            map.on('click', ['alert-centers', 'alert-markers'], (e) => {
+                const props = e.features[0].properties;
+                const coords = e.features[0].geometry.coordinates.slice();
+
+                new mapboxgl.Popup()
+                    .setLngLat(coords)
+                    .setHTML(`
+                        <div style='font-family:monospace; font-size:13px; color:#fa5252;'>
+                            <b style='font-size:15px;'>🚨 ${props.type?.toUpperCase()}</b><br/>
+                            <b>THREAT LEVEL: ${props.confidence}% CONFIDENCE</b><br/>
+                            <span style='color:#aaa'>Detected by AI Engine</span>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            map.on('mouseenter', ['alert-centers', 'alert-markers'], () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', ['alert-centers', 'alert-markers'], () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // ── Resource Popups (NEW) ────────────────────────
+            map.on('click', 'resource-markers', (e) => {
+                const props = e.features[0].properties;
+                const coords = e.features[0].geometry.coordinates.slice();
+
+                new mapboxgl.Popup()
+                    .setLngLat(coords)
+                    .setHTML(`
+                        <div style='font-family:sans-serif; font-size:13px;'>
+                            <b style='color:#00BCD4;'>${props.resource_type?.toUpperCase()}</b><br/>
+                            <b style='font-size:14px;'>${props.name}</b>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            map.on('mouseenter', 'resource-markers', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'resource-markers', () => {
                 map.getCanvas().style.cursor = '';
             });
 

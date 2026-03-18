@@ -1,11 +1,26 @@
 import React from 'react';
-import { Stack, Text, Badge, Group, Divider, Button, ScrollArea, Box, Switch } from '@mantine/core';
+import { Stack, Text, Badge, Group, Divider, Button, ScrollArea, Box, Switch, Paper } from '@mantine/core';
 import { Navigation, AlertCircle } from 'lucide-react';
 import SeverityCounter from './SeverityCounter';
 import RoutingPanel from './RoutingPanel';
 import AlertHistory from './AlertHistory';
 
-export default function Sidebar({ connected, stats, routeLoading, handleOptimiseRoute, routingData, recentAlerts, cascadeVisible, setCascadeVisible, onOpenManualAlert }) {
+export default function Sidebar({
+    connected,
+    stats,
+    routeLoading,
+    handleOptimiseRoute,
+    routingData,
+    recentAlerts,
+    cascadeVisible,
+    setCascadeVisible,
+    onOpenManualAlert,
+    citizenStats,
+    trafficVisible,
+    setTrafficVisible,
+    evacuationVisible,
+    setEvacuationVisible
+}) {
     const sev = stats?.by_severity || { critical: 0, urgent: 0, standard: 0, untriaged: 0 };
     const total = sev.critical + sev.urgent + sev.standard + sev.untriaged;
 
@@ -40,6 +55,18 @@ export default function Sidebar({ connected, stats, routeLoading, handleOptimise
 
                 <Divider color="dark.4" />
 
+                {/* ── PANEL 2b: Citizen Response Status ──────────── */}
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase">Citizen Response Status</Text>
+                <Paper p="sm" radius="sm" withBorder style={{ borderColor: 'var(--mantine-color-dark-4)' }}>
+                    <Group gap="sm">
+                        <Badge color="green" size="lg" variant="light">✅ Safe: {citizenStats?.safe || 0}</Badge>
+                        <Badge color="orange" size="lg" variant="light">🆘 Rescue: {citizenStats?.need_rescue || 0}</Badge>
+                        <Badge color="red" size="lg" variant="light">🏥 Medical: {citizenStats?.medical || 0}</Badge>
+                    </Group>
+                </Paper>
+
+                <Divider color="dark.4" />
+
                 {/* ── PANEL 3: Route Optimisation ──────────────── */}
                 <Group justify="space-between" align="center">
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">Route Optimisation</Text>
@@ -51,6 +78,21 @@ export default function Sidebar({ connected, stats, routeLoading, handleOptimise
                         size="xs"
                     />
                 </Group>
+
+                <Stack gap="xs">
+                    <Switch
+                        label="Live Traffic"
+                        checked={trafficVisible}
+                        onChange={(e) => setTrafficVisible(e.currentTarget.checked)}
+                        size="xs"
+                    />
+                    <Switch
+                        label="Evacuation Route"
+                        checked={evacuationVisible}
+                        onChange={(e) => setEvacuationVisible(e.currentTarget.checked)}
+                        size="xs"
+                    />
+                </Stack>
                 <Box style={{ flexShrink: 0 }}>
                     <Button
                         color="red"

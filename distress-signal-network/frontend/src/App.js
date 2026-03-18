@@ -17,6 +17,13 @@ import { getRecentAlerts } from './api/alerts';
 import ManualAlertModal from './components/ManualAlertModal';
 import { useDisclosure } from '@mantine/hooks';
 
+const GULF_COORDS = [
+  { lat: 35.6892, lng: 51.3890 }, // Tehran
+  { lat: 32.6539, lng: 51.6660 }, // Isfahan
+  { lat: 28.9234, lng: 50.8358 }  // Bushehr
+];
+let blastIndex = 0;
+
 function App() {
   const [stats, setStats] = useState({
     by_severity: { critical: 0, urgent: 0, standard: 0, untriaged: 0 }
@@ -29,6 +36,9 @@ function App() {
   const [routingData, setRoutingData] = useState(null);
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [cascadeVisible, setCascadeVisible] = useState(false);
+  const [trafficVisible, setTrafficVisible] = useState(false);
+  const [evacuationVisible, setEvacuationVisible] = useState(false);
+  const [citizenStats, setCitizenStats] = useState({ safe: 0, need_rescue: 0, medical: 0 });
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   // Fetch initial stats and alerts on mount
@@ -41,7 +51,11 @@ function App() {
     Promise.all([getSosStats(), getRecentAlerts(10)])
       .then(([statsData, alertsData]) => {
         if (statsData) setStats(statsData);
-        if (alertsData) setRecentAlerts(alertsData);
+        if (alertsData) {
+          // Add unique instance keys to initial alerts
+          const keyedAlerts = alertsData.map((a, i) => ({ ...a, instance_key: `init-${a.id}-${i}-${Date.now()}` }));
+          setRecentAlerts(keyedAlerts);
+        }
       })
       .catch(err => console.error('Failed to fetch initial sidebar data:', err));
   }, []);
@@ -60,6 +74,20 @@ function App() {
   };
 
   const handleBroadcastAlert = (data) => {
+    // Redirect 2-3 blast alerts to Gulf Area (OR all alerts if lacking coords to avoid sea)
+    const alertType = data.type?.toLowerCase();
+    const hasValidCoords = data.lat && data.lng && data.lat !== 0;
+
+    if (alertType === 'blast' || !hasValidCoords) {
+      const coord = GULF_COORDS[blastIndex % GULF_COORDS.length];
+      data.lat = coord.lat;
+      data.lng = coord.lng;
+      data.latitude = coord.lat;
+      data.longitude = coord.lng;
+      blastIndex++;
+      console.log(`[SIMULATION] Redirected ${alertType} alert to Gulf: ${data.lat}, ${data.lng}`);
+    }
+
     setAlertActive(true);
     setAlertData(data);
 
@@ -76,14 +104,18 @@ function App() {
       });
     }
 
-    // Prepend to recent alerts list
-    setRecentAlerts(prev => [data, ...prev].slice(0, 20));
+    // Prepend to recent alerts list with a unique instance key
+    const keyedAlert = { ...data, instance_key: `ws-${data.alert_id || data.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` };
+    setRecentAlerts(prev => [keyedAlert, ...prev].slice(0, 20));
     setTimeout(() => {
       setAlertActive(false);
       setAlertData(null);
     }, 5 * 60 * 1000);
   };
 
+  const handleCitizenStatus = (data) => {
+    setCitizenStats(prev => ({ ...prev, [data.status]: (prev[data.status] || 0) + 1 }));
+  };
 
   const handleNewSos = () => {
     setStats(prev => ({
@@ -130,6 +162,11 @@ function App() {
           cascadeVisible={cascadeVisible}
           setCascadeVisible={setCascadeVisible}
           onOpenManualAlert={openModal}
+          citizenStats={citizenStats}
+          trafficVisible={trafficVisible}
+          setTrafficVisible={setTrafficVisible}
+          evacuationVisible={evacuationVisible}
+          setEvacuationVisible={setEvacuationVisible}
         />
       </AppShell.Navbar>
 
@@ -139,8 +176,11 @@ function App() {
           onBroadcastAlert={handleBroadcastAlert}
           onNewSos={handleNewSos}
           onConnectionChange={setWsConnected}
+          onCitizenStatus={handleCitizenStatus}
           routingData={routingData}
           cascadeVisible={cascadeVisible}
+          trafficVisible={trafficVisible}
+          evacuationVisible={evacuationVisible}
         />
       </AppShell.Main>
 

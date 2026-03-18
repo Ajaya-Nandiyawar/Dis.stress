@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Stack, Text, Group, Select } from '@mantine/core';
+import { Alert, Badge, Stack, Text, Group, Select } from '@mantine/core';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 
 const TRANSLATIONS = {
@@ -88,10 +88,21 @@ export default function AlertBanner({ alertActive, alertData }) {
         >
             {alertActive
                 ? (
-                    <Stack gap={0}>
+                    <Stack gap={4}>
                         <Text size="sm" fw={500}>
-                            {t.confidence(Math.round((alertData?.confidence || 0) * 100), new Date(alertData?.triggered_at).toLocaleTimeString())}
+                            {t.confidence(Math.round((parseFloat(alertData?.confidence) || 0) * 100), new Date(alertData?.triggered_at).toLocaleTimeString())}
                         </Text>
+                        <Group gap="sm">
+                            <Badge color={(alertData?.source_count || 0) >= 2 ? 'green' : 'yellow'} size="lg">
+                                {alertData?.validation || 'UNVERIFIED'}
+                            </Badge>
+                            <Badge color="red" size="lg">
+                                {Math.round((parseFloat(alertData?.confidence) || 0) * 100)}%
+                            </Badge>
+                            <Text size="sm" c="white">
+                                {alertData?.report_count ?? 0} reports · {alertData?.source_count ?? 0} sources
+                            </Text>
+                        </Group>
                         {localizedTemplate && (
                             <Text size="xs" fw={700} c={lang !== 'en' ? 'red.2' : undefined}>
                                 {alertData?.source === 'manual' ? `Manual Override: ${localizedTemplate}` : localizedTemplate}
