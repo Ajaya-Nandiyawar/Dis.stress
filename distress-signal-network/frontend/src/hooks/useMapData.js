@@ -426,7 +426,7 @@ export const useMapData = (mapRef) => {
         const lat = Number(alertData?.lat ?? alertData?.latitude);
         const lng = Number(alertData?.lng ?? alertData?.longitude);
 
-        if (!alertData || isNaN(lat) || isNaN(lng)) {
+        if (!alertData || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
             mapRef.current.getSource('alert-zone-data').setData({ type: 'FeatureCollection', features: [] });
             return;
         }
@@ -452,7 +452,6 @@ export const useMapData = (mapRef) => {
                 }
             };
             alertsRef.current.push(centerFeature);
-            // Keep only last 50 alerts to avoid map clutter
             if (alertsRef.current.length > 50) alertsRef.current.shift();
 
             mapRef.current.getSource('alerts-data')?.setData({
@@ -464,9 +463,15 @@ export const useMapData = (mapRef) => {
         // Auto-pan to the alert (Smart Panning: only if off-screen AND not the same as last pan)
         const map = mapRef.current;
         const currentBounds = map.getBounds();
+        
+        // Exact coordinate deduplication
         const distToLast = lastPannedCoordRef.current ? Math.hypot(lastPannedCoordRef.current[0] - lng, lastPannedCoordRef.current[1] - lat) : 999;
+        
+        // Viewport center deduplication
+        const currentCenter = map.getCenter();
+        const distToCenter = Math.hypot(currentCenter.lng - lng, currentCenter.lat - lat);
 
-        if (!currentBounds.contains([lng, lat]) && distToLast > 0.001) {
+        if (!currentBounds.contains([lng, lat]) && distToLast > 0.001 && distToCenter > 0.001) {
             map.flyTo({ center: [lng, lat], zoom: Math.min(map.getZoom(), 10), speed: 1.2 });
             lastPannedCoordRef.current = [lng, lat];
         }

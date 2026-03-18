@@ -74,15 +74,18 @@ function App() {
   };
 
   const handleBroadcastAlert = (data) => {
-    // Redirect 2-3 blast alerts to Gulf Area
-    if (data.type?.toLowerCase() === 'blast') {
+    // Redirect 2-3 blast alerts to Gulf Area (OR all alerts if lacking coords to avoid sea)
+    const alertType = data.type?.toLowerCase();
+    const hasValidCoords = data.lat && data.lng && data.lat !== 0;
+
+    if (alertType === 'blast' || !hasValidCoords) {
       const coord = GULF_COORDS[blastIndex % GULF_COORDS.length];
       data.lat = coord.lat;
       data.lng = coord.lng;
       data.latitude = coord.lat;
       data.longitude = coord.lng;
       blastIndex++;
-      console.log(`[SIMULATION] Redirected blast alert to Gulf: ${data.lat}, ${data.lng}`);
+      console.log(`[SIMULATION] Redirected ${alertType} alert to Gulf: ${data.lat}, ${data.lng}`);
     }
 
     setAlertActive(true);

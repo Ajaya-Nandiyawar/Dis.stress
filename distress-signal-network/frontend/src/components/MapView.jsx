@@ -18,31 +18,9 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
         drawCascadeRipples(data);
         drawAlertZone(data);
 
-        // Update local records ref if it's a new SOS (though typically alerts are separate)
+        // Update local records ref
         if (data.lat && data.lng && data.severity) {
             sosRecordsRef.current.push(data);
-        }
-
-        // Ensure map pans to the alert location
-        const lat = Number(data?.lat ?? data?.latitude);
-        const lng = Number(data?.lng ?? data?.longitude);
-        if (mapRef.current && !isNaN(lat) && !isNaN(lng)) {
-            const map = mapRef.current;
-            const bounds = map.getBounds();
-            
-            // Deduplicate panning if already centered on this spot (~100m tolerance)
-            const currentCenter = map.getCenter();
-            const dist = Math.hypot(currentCenter.lng - lng, currentCenter.lat - lat);
-
-            // SMART PANNING: Only pan if the alert is NOT currently visible in the viewport AND far enough away
-            if (!bounds.contains([lng, lat]) && dist > 0.001) {
-                const currentZoom = map.getZoom();
-                map.flyTo({ 
-                    center: [lng, lat], 
-                    zoom: Math.min(currentZoom, 10), 
-                    speed: 1.0 
-                });
-            }
         }
     };
 
