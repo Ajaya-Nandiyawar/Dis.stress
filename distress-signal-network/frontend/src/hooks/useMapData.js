@@ -245,6 +245,21 @@ export const useMapData = (mapRef) => {
             }
         });
 
+        // ── Custom SVG Icons for Resources ──────────────────────────
+        const svgs = [
+            { id: 'icon-shelter', svg: '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="#00BCD4" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" ry="2" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>' },
+            { id: 'icon-ambulance', svg: '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="#1565C0" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10H6"/><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11h2"/><path d="M19 18h2v-4l-4.32-3.12A2 2 0 0 0 15 10c-1.35 0-2 .65-2 2v6h2"/><path d="M8 10h4"/><circle cx="17" cy="18" r="2" fill="#000" /><circle cx="4" cy="18" r="2" fill="#000" /></svg>' },
+            { id: 'icon-depot', svg: '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="#9C27B0" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>' }
+        ];
+
+        svgs.forEach(({id, svg}) => {
+            if (!mapRef.current.hasImage(id)) {
+                const img = new Image();
+                img.onload = () => { if (!mapRef.current.hasImage(id)) mapRef.current.addImage(id, img); };
+                img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            }
+        });
+
         // ── Resource Data Source (NEW) ──────────────────────────
         if (!mapRef.current.getSource('resource-data')) {
             mapRef.current.addSource('resource-data', {
@@ -257,12 +272,14 @@ export const useMapData = (mapRef) => {
                 type: 'symbol',
                 source: 'resource-data',
                 layout: {
-                    'icon-image': ['match', ['get', 'resource_type'], 
-                        'shelter', 'hospital-15', 
-                        'depot', 'warehouse-15', 
-                        'ambulance', 'ambulance-15', 
-                        'circle-15'
+                    'icon-image': ['match', ['get', 'resource_type'],
+                        'shelter', 'icon-shelter',
+                        'depot', 'icon-depot',
+                        'ambulance', 'icon-ambulance',
+                        ''
                     ],
+                    'icon-size': 1,
+                    'icon-allow-overlap': true,
                     'text-field': ['get', 'name'],
                     'text-size': 12,
                     'text-offset': [0, 1.2],

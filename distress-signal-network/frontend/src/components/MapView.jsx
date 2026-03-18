@@ -39,13 +39,17 @@ const MapView = ({ onMapLoaded, onTriageComplete, onBroadcastAlert, onNewSos, on
     // Handle Traffic Layer visibility
     useEffect(() => {
         if (!mapRef.current) return;
-        mapRef.current.setLayoutProperty('traffic', 'visibility', trafficVisible ? 'visible' : 'none');
+        if (mapRef.current.getLayer('traffic')) {
+            mapRef.current.setLayoutProperty('traffic', 'visibility', trafficVisible ? 'visible' : 'none');
+        }
     }, [trafficVisible]);
 
     // Handle Evacuation Route visibility and calculation
     useEffect(() => {
         if (!mapRef.current) return;
-        mapRef.current.setLayoutProperty('evac-route', 'visibility', evacuationVisible ? 'visible' : 'none');
+        if (mapRef.current.getLayer('evac-route')) {
+            mapRef.current.setLayoutProperty('evac-route', 'visibility', evacuationVisible ? 'visible' : 'none');
+        }
         if (evacuationVisible) {
             drawEvacuation(sosRecordsRef.current);
         }
